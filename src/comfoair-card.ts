@@ -2,6 +2,7 @@ import { LitElement, html, svg, css, PropertyValues, TemplateResult, CSSResultGr
 import { customElement, property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceCard, LovelaceCardEditor, fireEvent } from 'custom-card-helpers';
 import './comfoair-card-editor';
+import './comfoair-controls';
 import { ComfoairCardConfig, DetectHass } from './types';
 import { CARD_TYPE, EDITOR_TYPE, CARD_VERSION, FAN_BUTTONS, ENTITY_FIELDS } from './const';
 import {
@@ -10,6 +11,7 @@ import {
   decimalSeparator, formatDecimal,
 } from './helpers';
 import { fanModeLabel, localize, resolveLanguage } from './localize';
+import { CONTROL_DEFINITIONS } from './controls';
 
 console.info(
   `%c MQTT-COMFOAIR-CARD %c ${CARD_VERSION} `,
@@ -66,7 +68,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
   }
 
   public getCardSize(): number {
-    return 5;
+    return 5 + CONTROL_DEFINITIONS.filter(item => this._config?.show_controls !== false && this._config?.[item.key]).length * 2;
   }
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -234,6 +236,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
             </div>`,
           )}
         </div>
+        <mqttcomfoair-controls .hass=${this.hass} .config=${cfg} .language=${language}></mqttcomfoair-controls>
       </ha-card>
     `;
   }

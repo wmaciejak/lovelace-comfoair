@@ -5,6 +5,7 @@ import { ComfoairCardConfig, DetectHass } from './types';
 import { EDITOR_TYPE, ENTITY_FIELDS } from './const';
 import { autodetectEntities } from './helpers';
 import { localize, resolveLanguage } from './localize';
+import { CONTROL_DEFINITIONS } from './controls';
 
 type FormSchema = Record<string, unknown>;
 
@@ -24,6 +25,11 @@ const ADVANCED_SCHEMA: FormSchema[] = [
   { name: 'supply_air_level', selector: { entity: { domain: 'sensor' } } },
 ];
 
+const CONTROL_SCHEMA: FormSchema[] = [
+  { name: 'show_controls', selector: { boolean: {} } },
+  ...CONTROL_DEFINITIONS.map(item => ({ name: item.key, selector: { entity: { domain: [...item.domains] } } })),
+];
+
 @customElement(EDITOR_TYPE)
 export class MqttComfoairCardEditor extends LitElement implements LovelaceCardEditor {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -31,7 +37,7 @@ export class MqttComfoairCardEditor extends LitElement implements LovelaceCardEd
   @state() private _detectedCount = 0;
 
   public setConfig(config: ComfoairCardConfig): void {
-    this._config = config;
+    this._config = { show_controls: true, ...config };
   }
 
   /** Haupt-Schema; blendet Felder aus, die im aktuellen Modus keine Wirkung haben. */
@@ -83,6 +89,11 @@ export class MqttComfoairCardEditor extends LitElement implements LovelaceCardEd
         ${this._detectedCount > 0
           ? html`<div class="hint">✓ ${this._detectedCount} ${localize('detected', resolveLanguage(this._config.language, this.hass.language))}</div>`
           : ''}
+        <ha-expansion-panel outlined>
+          <span slot="header">${localize('controls', resolveLanguage(this._config.language, this.hass.language))}</span>
+          <ha-form .hass=${this.hass} .data=${this._config} .schema=${CONTROL_SCHEMA}
+            .computeLabel=${this._label} @value-changed=${this._advancedChanged}></ha-form>
+        </ha-expansion-panel>
         <ha-expansion-panel outlined>
           <span slot="header">${localize('advanced', resolveLanguage(this._config.language, this.hass.language))}</span>
           <ha-form
