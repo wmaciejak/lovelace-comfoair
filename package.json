@@ -1,6 +1,6 @@
 {
   "name": "lovelace-comfoair-card",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Home Assistant Lovelace card for CA350/550 ventilation via hacomfoairmqtt (comfoair2mqtt)",
   "type": "module",
   "license": "MIT",
@@ -20,6 +20,7 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
+    "happy-dom": "^21.0.4",
     "tslib": "^2.6.3",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"

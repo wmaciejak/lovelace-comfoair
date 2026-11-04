@@ -24,6 +24,13 @@ export interface ComfoairCardConfig extends LovelaceCardConfig {
   temp_min?: number; // °C, untere Grenze der festen Farbskala (Default -10)
   temp_max?: number; // °C, obere Grenze der festen Farbskala (Default 30)
   show_legend?: boolean; // kleine Temperatur-Farbskala unten einblenden
+  show_controls?: boolean;
+  airflow_control?: string;
+  operating_mode_control?: string;
+  boost_control?: string;
+  boost_duration?: string;
+  filter_reset?: string;
+  filter_interval?: string;
 }
 
 /** Schlank typisiertes hass-Objekt, ausreichend für reine Helper (testbar). */

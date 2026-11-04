@@ -1,5 +1,6 @@
 import { ComfoairCardConfig, DetectHass, HassEntityLike } from './types';
 import { fanModeLabel, localize } from './localize';
+import { detectControlEntities } from './controls';
 
 export function getState(
   hass: DetectHass | undefined,
@@ -284,5 +285,5 @@ export function autodetectEntities(
       (result as Record<string, string>)[rule.field as string] = best;
     }
   }
-  return result;
+  return { ...result, ...detectControlEntities(hass, climateEntityId) };
 }

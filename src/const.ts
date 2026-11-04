@@ -1,4 +1,6 @@
-export const CARD_VERSION = '0.17.0';
+import { CONTROL_DEFINITIONS } from './controls';
+
+export const CARD_VERSION = '0.18.0';
 export const CARD_TYPE = 'mqttcomfoair-card';
 export const EDITOR_TYPE = 'mqttcomfoair-card-editor';
 
@@ -21,4 +23,5 @@ export const ENTITY_FIELDS: readonly string[] = [
   'entity', 'tempSensor1', 'tempSensor2', 'tempSensor3', 'tempSensor4',
   'filterstatus', 'bypass_valve', 'summer_mode', 'preheat',
   'fan_speed_supply', 'fan_speed_exhaust', 'return_air_level', 'supply_air_level',
+  ...CONTROL_DEFINITIONS.map(item => item.key),
 ];

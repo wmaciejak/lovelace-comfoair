@@ -34,6 +34,58 @@ per-card language selection in the same localization system.
 
 # Home Assistant Lovelace MQTT Comfoair Card
 
+## Extended controls
+
+The optional controls section brings airflow direction, operating mode, boost,
+boost duration, filter reset and filter interval into the same card. All labels
+are available in English, Polish, German and Dutch.
+
+```yaml
+type: custom:mqttcomfoair-card
+entity: climate.ca350_climate
+language: auto
+show_controls: true
+airflow_control: select.ca350_fancontrol
+operating_mode_control: select.ca350_operating_mode
+boost_control: switch.ca350_boost
+boost_duration: number.ca350_boost_duration
+filter_reset: button.ca350_reset_filter
+filter_interval: number.ca350_filter_weeks
+```
+
+These are example entity IDs. Map the actual entities from your integration in
+the visual editor under **Controls**. Leave unsupported controls unset; the card
+only displays configured controls. `show_controls: false` hides the whole section.
+Unambiguous matching entities on the same HA device are detected when creating
+a card or changing the selected climate entity. For existing cards, map the new
+controls manually in the editor. Missing or unavailable entities appear disabled.
+
+| Setting | Supported entity domains | Behavior |
+| --- | --- | --- |
+| `airflow_control` | `select`, `input_select` | Choose an advertised option. `Both`, `In` and `Out` have translated display labels; raw values are sent unchanged. |
+| `operating_mode_control` | `select`, `input_select` | Choose a supported operating mode, including auto/manual where provided. |
+| `boost_control` | `switch`, `input_boolean` | Start or stop boost using explicit turn-on/turn-off actions. |
+| `boost_duration` | `number`, `input_number` | Apply runtime using the entity unit, minimum, maximum and step. |
+| `filter_reset` | `button`, `input_button` | Reset the filter counter after inline confirmation. |
+| `filter_interval` | `number`, `input_number` | Apply the filter interval using the entity unit and limits. |
+
+The card uses standard Home Assistant services. The integration must expose the
+requested capabilities, or you can provide helpers connected to HA automations.
+For example, hacomfoairmqtt exposes airflow selection, filter weeks and filter
+reset; boost and auto/manual availability depend on the integration/version.
+Map `boost_duration` to a number entity that the integration or an automation
+uses for runtime. Timing is not implemented with a browser timer, so it must be
+handled by the integration or Home Assistant. A standalone helper without an
+automation only changes its own state.
+
+Numeric changes require **Apply**, filter resets require confirmation, and
+controls remain disabled while a request is pending. Failed service requests show
+an error and allow retrying. Controls do not send actions during rendering or
+when the dashboard is opened.
+
+This section addresses the additional controls requested in
+[upstream issue #2](https://github.com/TimWeyand/lovelace-comfoair/issues/2).
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TimWeyand&repository=lovelace-comfoair&category=plugin)
 
