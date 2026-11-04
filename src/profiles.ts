@@ -21,6 +21,16 @@ const MQTT: Mapping[] = [
   { field: 'filter_interval', domain: 'number', suffix: 'filter_weeks' },
 ];
 const ESPHOME: Mapping[] = [
+  { field: 'bypass_valve', domain: 'sensor', suffix: 'bypass_state' },
+  { field: 'filterstatus', domain: 'sensor', suffix: 'days_remaining_filter' },
+  { field: 'airflow_supply', domain: 'sensor', suffix: 'supply_air_flow' },
+  { field: 'airflow_extract', domain: 'sensor', suffix: 'exhaust_air_flow' },
+  { field: 'humidity_supply', domain: 'sensor', suffix: 'supply_air_humidity' },
+  { field: 'humidity_extract', domain: 'sensor', suffix: 'extract_air_humidity' },
+  { field: 'power', domain: 'sensor', suffix: 'power_usage' },
+  { field: 'energy', domain: 'sensor', suffix: 'power_total' },
+  { field: 'preheater_power', domain: 'sensor', suffix: 'preheater_power_usage' },
+
   { field: 'tempSensor1', domain: 'sensor', suffix: 'outdoor_air_temp' },
   { field: 'tempSensor2', domain: 'sensor', suffix: 'exhaust_air_temp' },
   { field: 'tempSensor3', domain: 'sensor', suffix: 'extract_air_temp' },
@@ -47,6 +57,10 @@ export function detectProfile(hass: DetectHass, profile: IntegrationProfile, dev
     );
     if (ids.length === 1) (result.mapped as Record<string, string>)[rule.field as string] = ids[0];
     else (ids.length ? result.ambiguous : result.missing).push(rule.field);
+  }
+  if (profile === 'esphome') {
+    if (result.mapped.bypass_valve) result.mapped.bypass_mode='positive';
+    if (result.mapped.filterstatus) result.mapped.filter_mode='nonpositive';
   }
   return result;
 }

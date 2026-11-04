@@ -12,3 +12,7 @@ playwright-report/
 
 # Interne Doku/Planung – bleibt lokal, nicht auf GitHub
 Documentation/
+
+# Python validation artifacts
+__pycache__/
+*.py[cod]

@@ -1,0 +1,282 @@
+blueprint:
+  name: Ventilation demand, away and quiet presets
+  description: >-
+    Controls a percentage-capable fan. Auto responds to fresh CO2/humidity readings
+    with hysteresis. Home uses the baseline, Away uses the away speed, and Quiet
+    caps Auto speed. Manual override and timed boost take priority. Runs every
+    minute; requires the helpers from the companion ventilation package.
+    Sensor limits are user choices, not air-quality or health recommendations.
+  domain: automation
+  homeassistant:
+    min_version: '2025.10.0'
+  input:
+    fan:
+      name: Ventilation fan
+      selector:
+        entity:
+          domain: fan
+    enabled:
+      name: Enable automatic control
+      default: input_boolean.ventilation_automation_enabled
+      selector:
+        entity:
+          domain: input_boolean
+    manual_override:
+      name: Manual override
+      default: input_boolean.ventilation_manual_override
+      selector:
+        entity:
+          domain: input_boolean
+    boost_active:
+      name: Timed boost active
+      default: input_boolean.ventilation_boost_active
+      selector:
+        entity:
+          domain: input_boolean
+    preset:
+      name: Preset selector (Auto, Home, Away, Quiet, Manual)
+      default: input_select.ventilation_preset
+      selector:
+        entity:
+          domain: input_select
+    demand_active:
+      name: Demand hysteresis helper
+      default: input_boolean.ventilation_demand_active
+      selector:
+        entity:
+          domain: input_boolean
+    last_change:
+      name: Last automatic change helper
+      default: input_datetime.ventilation_last_automatic_change
+      selector:
+        entity:
+          domain: input_datetime
+    co2_sensors:
+      name: CO2 sensors (optional)
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: carbon_dioxide
+          multiple: true
+    humidity_sensors:
+      name: Relative humidity sensors (optional)
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+          multiple: true
+    away_helpers:
+      name: Away helpers (on means away; optional)
+      default: []
+      selector:
+        entity:
+          domain: [input_boolean, binary_sensor]
+          multiple: true
+    quiet_helpers:
+      name: Quiet-hours helpers (on means quiet; optional)
+      default: []
+      selector:
+        entity:
+          domain: [input_boolean, binary_sensor]
+          multiple: true
+    co2_high:
+      name: CO2 increase threshold (ppm)
+      default: 1200
+      selector:
+        number:
+          min: 400
+          max: 5000
+          step: 50
+          unit_of_measurement: ppm
+    co2_low:
+      name: CO2 release threshold (must be below increase threshold)
+      default: 900
+      selector:
+        number:
+          min: 350
+          max: 5000
+          step: 50
+          unit_of_measurement: ppm
+    humidity_high:
+      name: Humidity increase threshold (%)
+      default: 70
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: '%'
+    humidity_low:
+      name: Humidity release threshold (must be below increase threshold)
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 99
+          unit_of_measurement: '%'
+    stale_seconds:
+      name: Maximum sensor reporting age (seconds)
+      description: Uses last_reported, so unchanged but freshly reported values remain valid.
+      default: 900
+      selector:
+        number:
+          min: 60
+          max: 86400
+          step: 60
+          unit_of_measurement: s
+    minimum_interval:
+      name: Minimum seconds between automatic fan changes
+      default: 300
+      selector:
+        number:
+          min: 60
+          max: 3600
+          step: 60
+          unit_of_measurement: s
+    base_percentage:
+      name: Home baseline percentage
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: '%'
+    demand_percentage:
+      name: High-demand percentage
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: '%'
+    away_percentage:
+      name: Away percentage
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: '%'
+    quiet_percentage:
+      name: Quiet-hours maximum percentage
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: '%'
+
+mode: single
+triggers:
+  - trigger: time_pattern
+    minutes: '/1'
+  - trigger: homeassistant
+    event: start
+variables:
+  fan_entity: !input fan
+  enabled_entity: !input enabled
+  override_entity: !input manual_override
+  boost_entity: !input boost_active
+  preset_entity: !input preset
+  demand_entity: !input demand_active
+  last_change_entity: !input last_change
+  co2_ids: !input co2_sensors
+  humidity_ids: !input humidity_sensors
+  away_ids: !input away_helpers
+  quiet_ids: !input quiet_helpers
+  co2_high: !input co2_high
+  co2_low: !input co2_low
+  humidity_high: !input humidity_high
+  humidity_low: !input humidity_low
+  max_age: !input stale_seconds
+  min_interval: !input minimum_interval
+  base_speed: !input base_percentage
+  demand_speed: !input demand_percentage
+  away_speed: !input away_percentage
+  quiet_speed: !input quiet_percentage
+conditions:
+  - condition: template
+    value_template: >-
+      {{ is_state(enabled_entity, 'on') and is_state(override_entity, 'off') and
+         is_state(boost_entity, 'off') and
+         states(preset_entity) in ['Auto', 'Home', 'Away', 'Quiet'] and
+         states(demand_entity) in ['on', 'off'] and
+         states(fan_entity) in ['on', 'off'] and
+         is_number(state_attr(fan_entity, 'percentage')) and
+         co2_low < co2_high and humidity_low < humidity_high and
+         base_speed <= demand_speed and
+         as_timestamp(now()) - (state_attr(last_change_entity, 'timestamp') | float(0)) >= min_interval }}
+  # Missing optional helpers are not interpreted as off; freeze automatic changes.
+  - condition: template
+    value_template: >-
+      {{ expand(away_ids + quiet_ids) | list | length == (away_ids + quiet_ids) | unique | list | length and
+         expand(away_ids + quiet_ids) | rejectattr('state', 'in', ['on', 'off']) | list | length == 0 }}
+  # Every selected sensor must exist, be numeric, have the expected unit, and
+  # have a fresh report. Missing readings never cause a reduction to baseline.
+  - condition: template
+    value_template: >-
+      {% set ns = namespace(valid=true) %}
+      {% for id in co2_ids + humidity_ids %}
+        {% set s = states[id] %}
+        {% if s is none or s is undefined or not is_number(s.state) %}
+          {% set ns.valid = false %}
+        {% elif as_timestamp(now()) - as_timestamp(s.last_reported, 0) > max_age %}
+          {% set ns.valid = false %}
+        {% elif id in co2_ids and s.attributes.get('unit_of_measurement') != 'ppm' %}
+          {% set ns.valid = false %}
+        {% elif id in humidity_ids and s.attributes.get('unit_of_measurement') != '%' %}
+          {% set ns.valid = false %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.valid }}
+actions:
+  - variables:
+      high_demand: >-
+        {% set ns = namespace(high=false) %}
+        {% for id in co2_ids %}{% if states(id) | float >= co2_high %}{% set ns.high=true %}{% endif %}{% endfor %}
+        {% for id in humidity_ids %}{% if states(id) | float >= humidity_high %}{% set ns.high=true %}{% endif %}{% endfor %}
+        {{ ns.high }}
+      low_demand: >-
+        {% set ns = namespace(low=true) %}
+        {% for id in co2_ids %}{% if states(id) | float > co2_low %}{% set ns.low=false %}{% endif %}{% endfor %}
+        {% for id in humidity_ids %}{% if states(id) | float > humidity_low %}{% set ns.low=false %}{% endif %}{% endfor %}
+        {{ ns.low }}
+  - choose:
+      - conditions: "{{ high_demand }}"
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input demand_active
+      - conditions: "{{ low_demand }}"
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input demand_active
+  - variables:
+      target_percentage: >-
+        {% set mode = states(preset_entity) %}
+        {% set away = mode == 'Away' or (mode == 'Auto' and expand(away_ids) | selectattr('state', 'eq', 'on') | list | length > 0) %}
+        {% set quiet = mode == 'Quiet' or (mode == 'Auto' and expand(quiet_ids) | selectattr('state', 'eq', 'on') | list | length > 0) %}
+        {% set normal = demand_speed if is_state(demand_entity, 'on') else base_speed %}
+        {% if mode == 'Home' %}{{ base_speed }}
+        {% elif away %}{{ away_speed }}
+        {% elif quiet %}{{ [normal, quiet_speed] | min }}
+        {% else %}{{ normal }}{% endif %}
+  # Recheck priority immediately before issuing the command.
+  - condition: template
+    value_template: >-
+      {{ is_state(enabled_entity, 'on') and is_state(override_entity, 'off') and
+         is_state(boost_entity, 'off') and states(preset_entity) != 'Manual' and
+         (not is_state(fan_entity, 'on') or
+          (state_attr(fan_entity, 'percentage') | float(-1) - target_percentage | float) | abs > 0.5) }}
+  - action: fan.set_percentage
+    target:
+      entity_id: !input fan
+    data:
+      percentage: "{{ target_percentage | int }}"
+  - action: input_datetime.set_datetime
+    target:
+      entity_id: !input last_change
+    data:
+      timestamp: "{{ as_timestamp(now()) }}"
