@@ -22,9 +22,11 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Mobile browser tests
+        run: npm run test:browser
       - name: Check committed bundle is current
         run: |
           test -f comfoair-card.js
-          if ! git diff --exit-code -- comfoair-card.js; then
-            echo "::warning::comfoair-card.js weicht vom Build ab — 'npm run build' ausführen und committen (wird beim Release sonst automatisch aktualisiert)."
-          fi
+          git diff --exit-code -- comfoair-card.js

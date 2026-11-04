@@ -6,7 +6,7 @@ import { EDITOR_TYPE, ENTITY_FIELDS } from './const';
 import { autodetectEntities } from './helpers';
 import { localize, resolveLanguage } from './localize';
 import { CONTROL_DEFINITIONS } from './controls';
-
+import { detectProfile, IntegrationProfile } from './profiles';
 type FormSchema = Record<string, unknown>;
 
 const ADVANCED_SCHEMA: FormSchema[] = [
@@ -35,6 +35,8 @@ export class MqttComfoairCardEditor extends LitElement implements LovelaceCardEd
   @property({ attribute: false }) public hass!: HomeAssistant;
   @state() private _config!: ComfoairCardConfig;
   @state() private _detectedCount = 0;
+  @state() private _profile: IntegrationProfile | '' = '';
+  @state() private _profileDevice = '';
 
   public setConfig(config: ComfoairCardConfig): void {
     this._config = { show_controls: true, ...config };
@@ -79,6 +81,69 @@ export class MqttComfoairCardEditor extends LitElement implements LovelaceCardEd
     if (!this.hass || !this._config) return html``;
     return html`
       <div class="editor">
+<label>
+  ${localize('profile', resolveLanguage(this._config.language, this.hass.language))}
+  <select
+    data-profile
+    .value=${this._profile}
+    @change=${(event: Event) => {
+      this._profile = (event.target as HTMLSelectElement)
+        .value as IntegrationProfile | '';
+      this._profileDevice = '';
+    }}
+  >
+    <option value="">—</option>
+    <option value="mqtt">MQTT</option>
+    <option value="esphome">ESPHome</option>
+  </select>
+</label>
+
+${this._profile ? html`
+  <ha-form
+    data-profile-device
+    .hass=${this.hass}
+    .data=${{ device: this._profileDevice }}
+    .schema=${[{ name: 'device', selector: { device: {} } }]}
+    @value-changed=${(event: CustomEvent) => {
+      event.stopPropagation();
+      this._profileDevice = event.detail.value.device ?? '';
+    }}
+  ></ha-form>
+` : ''}
+
+${this._profile && this._profileDevice ? html`
+  <div>
+    ${Object.entries(
+      detectProfile(
+        this.hass as unknown as DetectHass,
+        this._profile,
+        this._profileDevice,
+      ).mapped,
+    ).map(([field, entity]) => html`
+      <div>${field}: ${entity}</div>
+    `)}
+  </div>
+  <button
+    type="button"
+    data-apply-profile
+    @click=${() => {
+      if (!this._profile || !this._profileDevice) return;
+      const { mapped } = detectProfile(
+        this.hass as unknown as DetectHass,
+        this._profile,
+        this._profileDevice,
+      );
+      const next = { ...this._config };
+      for (const [field, entity] of Object.entries(mapped)) {
+        const values = next as unknown as Record<string, unknown>;
+        if (!values[field]) values[field] = entity;
+      }
+      this._emit(next);
+    }}
+  >
+    ${localize('apply_profile', resolveLanguage(this._config.language, this.hass.language))}
+  </button>
+` : ''}
         <ha-form
           .hass=${this.hass}
           .data=${this._config}

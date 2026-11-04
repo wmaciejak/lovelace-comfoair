@@ -7,6 +7,8 @@
 
 # Dev
 node_modules/
+test-results/
+playwright-report/
 
 # Interne Doku/Planung – bleibt lokal, nicht auf GitHub
 Documentation/

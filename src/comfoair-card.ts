@@ -39,6 +39,8 @@ const SPIN_BASE = 1.6;
 export class MqttComfoairCard extends LitElement implements LovelaceCard {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @state() private _config!: ComfoairCardConfig;
+  @state() private _coreBusy = false;
+  @state() private _coreError = false;
 
   public static async getConfigElement(): Promise<LovelaceCardEditor> {
     return document.createElement(EDITOR_TYPE) as LovelaceCardEditor;
@@ -72,7 +74,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
   }
 
   protected shouldUpdate(changed: PropertyValues): boolean {
-    if (changed.has('_config')) return true;
+    if (changed.has('_config') || changed.has('_coreBusy') || changed.has('_coreError')) return true;
     const old = changed.get('hass') as HomeAssistant | undefined;
     if (!old || !this._config || old.language !== this.hass.language || old.locale !== this.hass.locale) return true;
     const cfg = this._config as unknown as Record<string, string | undefined>;
@@ -93,9 +95,14 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
       </ha-card>`;
     }
 
-    const fanMode = climate.attributes.fan_mode as string | undefined;
+    const fanMode = climate.state === 'unavailable' || climate.state === 'unknown' ? undefined : climate.attributes.fan_mode as string | undefined;
     const fanModeLc = fanMode?.toLowerCase();
     const setpoint = climate.attributes.temperature as number | undefined;
+    const available = climate.state !== 'unavailable' && climate.state !== 'unknown';
+    const features = Number(climate.attributes.supported_features) || 0;
+    const canSetTemperature = available && (features & 1) !== 0 && typeof setpoint === 'number' && Number.isFinite(setpoint);
+    const fanModes = available && (features & 8) !== 0 && Array.isArray(climate.attributes.fan_modes)
+      ? climate.attributes.fan_modes.filter((mode): mode is string => typeof mode === 'string') : [];
     const animated = cfg.animation === 'animated';
     const scale: 'auto' | 'fixed' = cfg.color_scale === 'fixed' ? 'fixed' : 'auto';
     const running = !!fanModeLc && fanModeLc !== 'off';
@@ -155,20 +162,18 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
 
     const hub = html`
       <div class="hub corehub">
-        <div class="setpc">
-          <button @click=${(): void => this._stepTemp(-1)} aria-label=${t('colder')}>−</button>
+        ${canSetTemperature ? html`<div class="setpc">
+          <button ?disabled=${this._coreBusy} @click=${(): void => { void this._stepTemp(-1); }} aria-label=${t('colder')}>−</button>
           <div class="val">${setpoint != null ? fmt(String(setpoint)) : '—'}<small>°C</small></div>
-          <button @click=${(): void => this._stepTemp(1)} aria-label=${t('warmer')}>+</button>
-        </div>
-        <div class="fanrow">
-          ${FAN_BUTTONS.map(
-            (b) => html`<button
-              class=${isFanModeActive(fanMode, b.mode) ? 'on' : ''}
-              title=${fanModeLabel(b.mode, language)} aria-label=${fanModeLabel(b.mode, language)}
-              @click=${(): void => this._setFan(b.mode)}
-            ><ha-icon icon=${b.icon}></ha-icon></button>`,
-          )}
-        </div>
+          <button ?disabled=${this._coreBusy} @click=${(): void => { void this._stepTemp(1); }} aria-label=${t('warmer')}>+</button>
+        </div>` : ''}
+        ${fanModes.length ? html`<div class="fanrow">
+          ${fanModes.map(mode => html`<button
+              class=${isFanModeActive(fanMode, mode) ? 'on' : ''}
+              title=${fanModeLabel(mode, language)} aria-label=${fanModeLabel(mode, language)}
+              ?disabled=${this._coreBusy} @click=${(): void => { void this._setFan(mode); }}
+            ><ha-icon icon=${FAN_BUTTONS.find(b => b.mode === mode.toLowerCase())?.icon ?? 'mdi:fan'}></ha-icon></button>`)}
+        </div>` : ''}
       </div>`;
 
     return html`
@@ -237,6 +242,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
           )}
         </div>
         <mqttcomfoair-controls .hass=${this.hass} .config=${cfg} .language=${language}></mqttcomfoair-controls>
+        ${this._coreError ? html`<span role="alert">${t('update_failed')}</span>` : ''}
       </ha-card>
     `;
   }
@@ -256,15 +262,19 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
     if (entityId) fireEvent(this, 'hass-more-info', { entityId });
   }
 
-  private _setFan(mode: string): void {
-    if (!this._config.entity) return;
-    this.hass.callService('climate', 'set_fan_mode', {
-      entity_id: this._config.entity, fan_mode: mode,
-    });
+  private async _setFan(mode: string): Promise<void> {
+    const climate = getState(this.hass as unknown as DetectHass, this._config.entity);
+    if (this._coreBusy || !climate || ['unknown', 'unavailable'].includes(climate.state) || !(Number(climate.attributes.supported_features) & 8) || !Array.isArray(climate.attributes.fan_modes) || !climate.attributes.fan_modes.includes(mode)) return;
+    this._coreBusy = true;
+    this._coreError = false;
+    try { await this.hass.callService('climate', 'set_fan_mode', { entity_id: this._config.entity, fan_mode: mode }); }
+    catch { this._coreError = true; }
+    finally { this._coreBusy = false; }
   }
 
-  private _stepTemp(direction: 1 | -1): void {
+  private async _stepTemp(direction: 1 | -1): Promise<void> {
     const climate = getState(this.hass as unknown as DetectHass, this._config.entity);
+    if (this._coreBusy || !climate || ['unknown', 'unavailable'].includes(climate.state) || !(Number(climate.attributes.supported_features) & 1) || typeof climate.attributes.temperature !== 'number') return;
     const current = Number(climate?.attributes.temperature);
     if (!Number.isFinite(current)) return; // kein Setpoint / nicht-numerisch → kein Service-Call
     const stepRaw = Number(climate!.attributes.target_temp_step);
@@ -277,9 +287,11 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
       Number.isFinite(max) ? max : Infinity,
       direction,
     );
-    this.hass.callService('climate', 'set_temperature', {
-      entity_id: this._config.entity, temperature: next,
-    });
+    this._coreBusy = true;
+    this._coreError = false;
+    try { await this.hass.callService('climate', 'set_temperature', { entity_id: this._config.entity, temperature: next }); }
+    catch { this._coreError = true; }
+    finally { this._coreBusy = false; }
   }
 
   static get styles(): CSSResultGroup {
@@ -287,6 +299,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
       ha-card {
         padding: 14px 16px 12px;
         --arrow: rgba(255, 255, 255, 0.92);
+        container-type: inline-size;
       }
       .hd { display: flex; align-items: center; gap: 11px; padding: 2px 2px 12px; }
       .hd .ic {
@@ -306,7 +319,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
 
       .tempbadge {
         display: inline-flex; align-items: baseline; justify-content: center; gap: 1px;
-        width: 88px; padding: 3px 4px; border-radius: 10px; line-height: 1;
+        box-sizing: border-box; width: clamp(52px, 20cqi, 88px); padding: 3px 4px; border-radius: 10px; line-height: 1;
         font-variant-numeric: tabular-nums;
         background: var(--bg); color: var(--fg); border: 1px solid var(--bd);
         box-shadow: 0 2px 10px -4px rgba(0, 0, 0, 0.5);
@@ -348,7 +361,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
       .fanrow button.on { background: var(--primary-color); color: #fff; box-shadow: 0 2px 8px -2px var(--primary-color); }
       .fanrow ha-icon { --mdc-icon-size: 18px; }
 
-      .lanes { display: flex; flex-direction: column; gap: 3px; --hub-w: 188px; }
+      .lanes { display: flex; flex-direction: column; gap: 3px; --hub-w: clamp(100px, 42cqi, 188px); }
       .trow { display: grid; grid-template-columns: 1fr var(--hub-w) 1fr; gap: 10px; padding: 0 6px; }
       .trow.top { align-items: end; }
       .trow.bot { align-items: start; }
@@ -379,6 +392,14 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
       .chip.on { color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
       .chip.on .vs { color: var(--c); opacity: 0.9; }
       .chip.on ha-icon { filter: drop-shadow(0 0 7px var(--c)); }
+      @container (max-width: 380px) {
+        .trow { gap: 4px; padding: 0 2px; }
+        .tempbadge .v { font-size: 18px; }
+        .lbl { font-size: 9px; letter-spacing: 0; }
+        .fanrow button { min-width: 36px; min-height: 36px; }
+        .setpc button { min-width: 36px; min-height: 36px; }
+        .status { grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); }
+      }
     `;
   }
 }

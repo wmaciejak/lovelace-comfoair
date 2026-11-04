@@ -200,8 +200,16 @@ export function statusChip(
   kind: StatusKind, raw: string | undefined, fanMode?: string, language = 'de',
 ): StatusChip {
   const on = raw === 'on';
+  if (kind !== 'fan' && raw !== 'on' && raw !== 'off') {
+    const icons = { filter: 'mdi:air-filter', bypass: 'mdi:valve', preheat: 'mdi:radiator', season: 'mdi:weather-partly-cloudy' };
+    const labels = { filter: 'filter', bypass: 'bypass', preheat: 'preheat', season: 'season' };
+    return { icon: icons[kind], label: localize(labels[kind], language), sub: localize('unavailable', language), active: false, color: 'var(--disabled-text-color)' };
+  }
   switch (kind) {
     case 'fan': {
+      if (!fanMode || fanMode === 'unknown' || fanMode === 'unavailable') {
+        return { icon: 'mdi:fan', label: localize('fan', language), sub: localize('unavailable', language), active: false, color: 'var(--disabled-text-color)' };
+      }
       const fm = (fanMode ?? 'off').toLowerCase();
       return { icon: 'mdi:fan', label: localize('fan', language), sub: fanModeLabel(fm, language), active: fm !== 'off', color: '#03a9f4' };
     }
