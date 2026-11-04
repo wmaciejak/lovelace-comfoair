@@ -1,4 +1,4 @@
-export const CARD_VERSION = '0.16.3';
+export const CARD_VERSION = '0.17.0';
 export const CARD_TYPE = 'mqttcomfoair-card';
 export const EDITOR_TYPE = 'mqttcomfoair-card-editor';
 
@@ -15,11 +15,6 @@ export const FAN_BUTTONS: FanButton[] = [
   { mode: 'medium', icon: 'mdi:fan-speed-2' },
   { mode: 'high', icon: 'mdi:fan-speed-3' },
 ];
-
-/** Anzeige-Labels der Lüfterstufen (eine Quelle für Karte + Status-Chip). */
-export const FAN_MODE_LABELS: Record<string, string> = {
-  off: 'Aus', low: 'Stufe 1', medium: 'Stufe 2', high: 'Stufe 3',
-};
 
 /** Config-Schlüssel, die auf HA-Entities zeigen (eine Quelle für shouldUpdate + Editor-Reset). */
 export const ENTITY_FIELDS: readonly string[] = [

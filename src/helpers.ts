@@ -1,5 +1,5 @@
 import { ComfoairCardConfig, DetectHass, HassEntityLike } from './types';
-import { FAN_MODE_LABELS } from './const';
+import { fanModeLabel, localize } from './localize';
 
 export function getState(
   hass: DetectHass | undefined,
@@ -18,6 +18,57 @@ export function displayState(
     return '—';
   }
   return st.state;
+}
+
+/** Ausschnitt aus hass.locale (HA FrontendLocaleData), soweit für Zahlen nötig. */
+export interface LocaleLike {
+  language?: string;
+  number_format?: string;
+}
+
+/** Bisheriges (fest verdrahtetes) Trennzeichen – Fallback ohne Locale-Angabe, damit sich nichts ändert. */
+export const LEGACY_DECIMAL_SEPARATOR = ',';
+
+/**
+ * Feste Zahlenformate → Locale, wie im HA-Frontend (src/common/number/format_number.ts).
+ * 'none' formatiert HA ungruppiert als en-US.
+ */
+const NUMBER_FORMAT_LOCALES: Record<string, string> = {
+  comma_decimal: 'en-US',
+  decimal_comma: 'de',
+  space_comma: 'fr',
+  quote_decimal: 'de-CH',
+  none: 'en-US',
+};
+
+/**
+ * Dezimaltrennzeichen gemäß HA-Profileinstellung „Zahlenformat“ (hass.locale.number_format):
+ * feste Formate über die Tabelle oben, 'system' über die Browser-Locale, sonst ('language'
+ * oder fehlend) über hass.locale.language bzw. hass.language.
+ * Ohne jede Locale-Angabe – oder falls Intl fehlt/wirft – bleibt es beim bisherigen Komma.
+ */
+export function decimalSeparator(locale?: LocaleLike, language?: string): string {
+  const nf = locale?.number_format;
+  let tag: string | undefined;
+  if (nf && nf in NUMBER_FORMAT_LOCALES) {
+    tag = NUMBER_FORMAT_LOCALES[nf];
+  } else if (nf !== 'system') {
+    tag = locale?.language ?? language;
+    if (tag === undefined) return LEGACY_DECIMAL_SEPARATOR;
+  }
+  try {
+    return new Intl.NumberFormat(tag).formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? LEGACY_DECIMAL_SEPARATOR;
+  } catch {
+    return LEGACY_DECIMAL_SEPARATOR;
+  }
+}
+
+/**
+ * Tauscht nur bei Dezimalzahlen ("19.5", "-3.5", "+0.5", ".5") den Punkt. HA-States kommen
+ * aus Pythons str(float); Ganzzahlen ("23"), "—", Exponenten und Text bleiben unverändert.
+ */
+export function formatDecimal(value: string, sep: string): string {
+  return /^[-+]?\d*\.\d+$/.test(value) ? value.replace('.', sep) : value;
 }
 
 /** Zahl aus einem State; undefined falls nicht parsebar. */
@@ -145,24 +196,24 @@ export interface StatusChip {
 }
 
 export function statusChip(
-  kind: StatusKind, raw: string | undefined, fanMode?: string,
+  kind: StatusKind, raw: string | undefined, fanMode?: string, language = 'de',
 ): StatusChip {
   const on = raw === 'on';
   switch (kind) {
     case 'fan': {
       const fm = (fanMode ?? 'off').toLowerCase();
-      return { icon: 'mdi:fan', label: 'Lüfter', sub: FAN_MODE_LABELS[fm] ?? fm, active: fm !== 'off', color: '#03a9f4' };
+      return { icon: 'mdi:fan', label: localize('fan', language), sub: fanModeLabel(fm, language), active: fm !== 'off', color: '#03a9f4' };
     }
     case 'filter':
-      return { icon: 'mdi:air-filter', label: 'Filter', sub: on ? 'Wechseln' : 'OK', active: on, color: '#f5a623' };
+      return { icon: 'mdi:air-filter', label: localize('filter', language), sub: on ? localize('replace', language) : localize('ok', language), active: on, color: '#f5a623' };
     case 'bypass':
-      return { icon: 'mdi:valve', label: 'Bypass', sub: on ? 'Offen' : 'Zu', active: on, color: '#36c46b' };
+      return { icon: 'mdi:valve', label: localize('bypass', language), sub: on ? localize('open', language) : localize('closed', language), active: on, color: '#36c46b' };
     case 'preheat':
-      return { icon: 'mdi:radiator', label: 'Vorheizen', sub: on ? 'Aktiv' : 'Aus', active: on, color: '#ff7043' };
+      return { icon: 'mdi:radiator', label: localize('preheat', language), sub: on ? localize('active', language) : localize('off', language), active: on, color: '#ff7043' };
     case 'season':
       return on
-        ? { icon: 'mdi:weather-sunny', label: 'Sommer', sub: '', active: true, color: '#ffb300' }
-        : { icon: 'mdi:snowflake', label: 'Winter', sub: '', active: true, color: '#4fc3f7' };
+        ? { icon: 'mdi:weather-sunny', label: localize('summer', language), sub: '', active: true, color: '#ffb300' }
+        : { icon: 'mdi:snowflake', label: localize('winter', language), sub: '', active: true, color: '#4fc3f7' };
   }
 }
 
