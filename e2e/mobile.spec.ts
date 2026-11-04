@@ -55,7 +55,7 @@ test('renders independent card instances, including an offline climate entity', 
   const cards = page.locator('mqttcomfoair-card');
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0).getByRole('button', { name: 'Speed 1' })).toBeVisible();
-  await expect(cards.nth(1).getByRole('button')).toHaveCount(0);
+  await expect(cards.nth(1).locator('.fanrow button, .setpc button, .native-controls input')).toHaveCount(0);
   await expect(cards.nth(1)).toContainText('Unavailable');
 });
 
@@ -82,4 +82,26 @@ test('renders translated controls and retains card functionality after a page re
   }
   await page.reload();
   await expect.poll(() => page.evaluate(() => !!customElements.get('mqttcomfoair-card'))).toBe(true);
+});
+
+test('native fan, telemetry, compact layout and keyboard history work without climate', async ({ page }) => {
+  await page.setViewportSize({width:390,height:900});
+  await page.goto('/e2e/fixture.html');
+  await page.evaluate(async()=>{
+    await customElements.whenDefined('mqttcomfoair-card');
+    const card=document.createElement('mqttcomfoair-card') as any;
+    card.setConfig({type:'custom:mqttcomfoair-card',entity:'fan.native',layout:'compact',language:'en',airflow_supply:'sensor.flow',tempSensor1:'sensor.temp',status_chips:['fan'],boost_script:'script.boost'});
+    card.hass={language:'en',states:{'fan.native':{entity_id:'fan.native',state:'on',attributes:{percentage:50,supported_features:1,percentage_step:25}},'sensor.flow':{entity_id:'sensor.flow',state:'210',attributes:{unit_of_measurement:'m³/h'}},'sensor.temp':{entity_id:'sensor.temp',state:'8',attributes:{unit_of_measurement:'°C'}}},callService:()=>Promise.resolve()};
+    document.getElementById('cards')!.append(card);await card.updateComplete;
+  });
+  const card=page.locator('mqttcomfoair-card');
+  await expect(card.getByRole('slider')).toBeVisible();
+  await expect(card.getByText('210 m³/h')).toBeVisible();
+  await expect(card.getByRole('button',{name:'30 min',exact:true})).toBeVisible();
+  const badge=card.locator('.tempbadge').first();
+  await badge.focus();
+  await expect(badge).toBeFocused();
+  await expect(card.locator('.chip')).toHaveCount(1);
+  const overflow=await card.evaluate((el)=>el.scrollWidth>el.clientWidth+1);
+  expect(overflow).toBe(false);
 });

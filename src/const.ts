@@ -20,6 +20,7 @@ export const FAN_BUTTONS: FanButton[] = [
 
 /** Config-Schlüssel, die auf HA-Entities zeigen (eine Quelle für shouldUpdate + Editor-Reset). */
 export const ENTITY_FIELDS: readonly string[] = [
+  'exchanger_inlet', 'exchanger_outlet', 'airflow_supply', 'airflow_extract', 'humidity_supply', 'humidity_extract', 'power', 'energy', 'preheater_power', 'boost_timer', 'manual_override',
   'entity', 'tempSensor1', 'tempSensor2', 'tempSensor3', 'tempSensor4',
   'filterstatus', 'bypass_valve', 'summer_mode', 'preheat',
   'fan_speed_supply', 'fan_speed_exhaust', 'return_air_level', 'supply_air_level',
