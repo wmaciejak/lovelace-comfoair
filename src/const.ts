@@ -1,6 +1,6 @@
 import { CONTROL_DEFINITIONS } from './controls';
 
-export const CARD_VERSION = '0.18.1';
+export const CARD_VERSION = '0.18.2';
 export const CARD_TYPE = 'mqttcomfoair-card';
 export const EDITOR_TYPE = 'mqttcomfoair-card-editor';
 
