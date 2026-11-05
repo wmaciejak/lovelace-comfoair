@@ -1,0 +1,41 @@
+# Replace sensor.ventilation_energy_total with a cumulative Wh/kWh sensor. Set price and currency.
+utility_meter:
+  ventilation_energy_day:
+    source: sensor.ventilation_energy_source_kwh
+    cycle: daily
+  ventilation_energy_month:
+    source: sensor.ventilation_energy_source_kwh
+    cycle: monthly
+input_number:
+  ventilation_energy_price:
+    name: Ventilation estimate tariff
+    min: 0
+    max: 1000
+    step: 0.001
+    mode: box
+template:
+- sensor:
+  - name: Ventilation energy source kWh
+    unique_id: ventilation_energy_source_kwh
+    device_class: energy
+    state_class: total_increasing
+    unit_of_measurement: kWh
+    availability: '{{ is_number(states(''sensor.ventilation_energy_total'')) and state_attr(''sensor.ventilation_energy_total'',''unit_of_measurement'')
+      in [''Wh'',''kWh''] and states(''sensor.ventilation_energy_total'') | float(-1) >= 0 }}'
+    state: '{{ states(''sensor.ventilation_energy_total'') | float(0) / (1000 if state_attr(''sensor.ventilation_energy_total'',''unit_of_measurement'')
+      == ''Wh'' else 1) }}'
+  - name: Ventilation previous day energy
+    unique_id: ventilation_previous_day_energy
+    unit_of_measurement: kWh
+    availability: '{{ is_number(state_attr("sensor.ventilation_energy_day", "last_period")) }}'
+    state: '{{ state_attr("sensor.ventilation_energy_day", "last_period") }}'
+  - name: Ventilation previous month energy
+    unique_id: ventilation_previous_month_energy
+    unit_of_measurement: kWh
+    availability: '{{ is_number(state_attr("sensor.ventilation_energy_month", "last_period")) }}'
+    state: '{{ state_attr("sensor.ventilation_energy_month", "last_period") }}'
+  - name: Ventilation estimate tariff
+    unique_id: ventilation_estimate_tariff
+    unit_of_measurement: PLN/kWh
+    availability: '{{ is_number(states("input_number.ventilation_energy_price")) }}'
+    state: '{{ states("input_number.ventilation_energy_price") }}'

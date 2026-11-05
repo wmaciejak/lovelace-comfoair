@@ -1,0 +1,106 @@
+# Requires the main ventilation package and two UI-created Schedule helpers:
+# schedule.ventilation_quiet and schedule.ventilation_away.
+# YAML-defined schedules cannot be edited through HA's schedule editor.
+input_boolean:
+  ventilation_schedule_enabled:
+    name: Ventilation schedule enabled
+    initial: false
+input_datetime:
+  ventilation_override_until:
+    name: Ventilation override deadline
+    has_date: true
+    has_time: true
+script:
+  ventilation_override_to_next_boundary:
+    alias: Ventilation manual override until next schedule change
+    mode: single
+    sequence:
+      - variables:
+          transitions: >-
+            {{ [as_timestamp(state_attr('schedule.ventilation_quiet','next_event'),0),
+                as_timestamp(state_attr('schedule.ventilation_away','next_event'),0)]
+               | select('gt',as_timestamp(now())) | list }}
+      - condition: template
+        value_template: '{{ transitions | length > 0 }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ventilation_override_until
+        data:
+          timestamp: '{{ transitions | min }}'
+      - action: input_boolean.turn_on
+        target:
+          entity_id:
+            - input_boolean.ventilation_manual_override
+            - input_boolean.ventilation_override_until_boundary
+      - action: script.ventilation_end_boost
+        data:
+          restore: false
+automation:
+  - id: ventilation_apply_weekly_schedule
+    alias: Ventilation apply weekly schedule
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id:
+          - schedule.ventilation_quiet
+          - schedule.ventilation_away
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: '/1'
+    actions:
+      - if:
+          - condition: state
+            entity_id: input_boolean.ventilation_override_until_boundary
+            state: 'on'
+          - condition: template
+            value_template: >-
+              {{ state_attr('input_datetime.ventilation_override_until','timestamp') | float(0) <= as_timestamp(now()) }}
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id:
+                - input_boolean.ventilation_manual_override
+                - input_boolean.ventilation_override_until_boundary
+      - condition: state
+        entity_id: input_boolean.ventilation_schedule_enabled
+        state: 'on'
+      - condition: template
+        value_template: >-
+          {{ is_state('input_boolean.ventilation_manual_override','off') and
+             is_state('input_boolean.ventilation_boost_active','off') and
+             states('schedule.ventilation_quiet') in ['on','off'] and
+             states('schedule.ventilation_away') in ['on','off'] }}
+      - variables:
+          desired: >-
+            {{ 'Away' if is_state('schedule.ventilation_away','on') else
+               'Quiet' if is_state('schedule.ventilation_quiet','on') else 'Auto' }}
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.ventilation_schedule_owned
+      - condition: template
+        value_template: '{{ states("input_select.ventilation_preset") != desired }}'
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.ventilation_preset
+        data:
+          option: '{{ desired }}'
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.ventilation_control_reason
+        data:
+          value: 'Schedule preset'
+template:
+  - sensor:
+      - name: Ventilation schedule next transition
+        unique_id: ventilation_schedule_next_transition
+        device_class: timestamp
+        availability: >-
+          {{ [as_timestamp(state_attr('schedule.ventilation_quiet','next_event'),0),
+              as_timestamp(state_attr('schedule.ventilation_away','next_event'),0)]
+              | select('gt',as_timestamp(now())) | list | length > 0 }}
+        state: >-
+          {% set events = [as_timestamp(state_attr('schedule.ventilation_quiet','next_event'),0),
+              as_timestamp(state_attr('schedule.ventilation_away','next_event'),0)]
+              | select('gt',as_timestamp(now())) | list %}
+          {{ as_datetime(events | min).isoformat() if events else none }}

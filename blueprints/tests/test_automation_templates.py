@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import json
 
 import jinja2
 import yaml
@@ -60,6 +61,14 @@ def render(template, states, **variables):
 
     env = jinja2.Environment(undefined=jinja2.StrictUndefined)
     env.filters['bool'] = boolean
+    env.filters['to_json'] = json.dumps
+    def from_json(text, default=None):
+        try:
+            return json.loads(text)
+        except (TypeError, ValueError):
+            return default
+    env.filters['from_json'] = from_json
+    env.filters['bitwise_and'] = lambda value, mask: int(value or 0) & int(mask)
     env.globals.update(states=states, is_state=lambda e, s: states(e) == s,
                        state_attr=attr, now=lambda: NOW, as_timestamp=timestamp,
                        is_number=lambda v: str(v).replace('.', '', 1).lstrip('-').isdigit(),
@@ -106,22 +115,16 @@ class AutomationTemplates(unittest.TestCase):
 
     def test_restore_requires_ownership_and_no_manual_override(self):
         template = PACKAGE['script']['ventilation_end_boost']['sequence'][2]['variables']['should_restore']
-        states = States({
-            'fan.ventilation': state('on', {'percentage': 100, 'preset_mode': None}),
-            'input_number.ventilation_boost_percentage': state(100),
-            'input_text.ventilation_boost_expected_preset': state(''),
-            'input_boolean.ventilation_manual_override': state('off'),
-        })
-        self.assertEqual(render(template, states), 'True')
-        states['fan.ventilation'].attributes['percentage'] = 50
-        self.assertEqual(render(template, states), 'False')
-        states['fan.ventilation'].attributes['percentage'] = 100
+        states = States({'input_boolean.ventilation_manual_override': state('off')})
+        variables = {'current_snapshot': 'v1|{"value":100}', 'expected_snapshot': 'v1|{"value":100}'}
+        self.assertEqual(render(template, states, **variables), 'True')
+        variables['current_snapshot'] = 'v1|{"value":50}'
+        self.assertEqual(render(template, states, **variables), 'False')
+        variables['current_snapshot'] = variables['expected_snapshot']
         states['input_boolean.ventilation_manual_override'] = state('on')
-        self.assertEqual(render(template, states), 'False')
+        self.assertEqual(render(template, states, **variables), 'False')
         states['input_boolean.ventilation_manual_override'] = state('off')
-        states['fan.ventilation'].attributes['preset_mode'] = 'night'
-        self.assertEqual(render(template, states), 'False')
-        self.assertEqual(render(template, states, restore=False), 'False')
+        self.assertEqual(render(template, states, restore=False, **variables), 'False')
 
     def test_no_sensor_data_is_treated_as_safe_to_reduce(self):
         template = BLUEPRINT['conditions'][2]['value_template']
@@ -165,7 +168,7 @@ class AutomationTemplates(unittest.TestCase):
                          demand_entity='input_boolean.demand', fan_entity='fan.ventilation',
                          last_change_entity='input_datetime.last', co2_low=900, co2_high=1200,
                          humidity_low=60, humidity_high=70, base_speed=50, demand_speed=100,
-                         min_interval=300, target_percentage=100)
+                         min_interval=300, target_percentage=100, target_value=100)
         states = States({'input_boolean.enabled': state('on'), 'input_boolean.override': state('off'),
                          'input_boolean.boost': state('off'), 'input_select.mode': state('Auto'),
                          'input_boolean.demand': state('on'),

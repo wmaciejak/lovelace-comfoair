@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeAssistant } from 'custom-card-helpers';
-import { MqttComfoairHistory, historyEntityIds, historyPoints } from '../src/comfoair-history';
+import { MqttComfoairHistory, historyEntityIds, historyPoints, historyCsv } from '../src/comfoair-history';
 import '../src/comfoair-history';
 
 afterEach(() => document.body.replaceChildren());
@@ -15,6 +15,103 @@ function setup(call = vi.fn().mockResolvedValue([])) {
 }
 
 describe('bounded history', () => {
+  it('exports original timestamps, states and metadata with safe quoted CSV cells', () => {
+    const csv = historyCsv([{ entity: 'sensor.power', name: '=HYPERLINK("bad")', unit: '@W', rows: [
+      { state: '-3.5', last_changed: '2026-11-05T10:00:00Z' },
+      { state: '=1+1', last_changed: '2026-11-05T10:01:00Z' },
+    ] }], Date.parse('2026-11-05T10:00:00Z'), Date.parse('2026-11-05T10:02:00Z'));
+    expect(csv).toContain('"2026-11-05T10:00:00.000Z"');
+    expect(csv).toContain('"\'=HYPERLINK(""bad"")"');
+    expect(csv).toContain('"\'@W"');
+    expect(csv).toContain('"-3.5"');
+    expect(csv).toContain('"\'=1+1"');
+  });
+  it('lets users inspect precise points, zoom without fetching, and select series', async () => {
+    const rows = [1, 2, 3].map((state, i) => ({ entity_id: 'sensor.temperature', state: String(state), last_changed: new Date(Date.now() - 30000 + i * 10000).toISOString() }));
+    const { card, call } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    const chart = card.shadowRoot!.querySelector('svg')!;
+    chart.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('[data-tooltip]')!.textContent).toContain('1');
+    expect(card.shadowRoot!.querySelector('[data-tooltip] time')!.getAttribute('datetime')).toBe(new Date(rows[0].last_changed).toISOString());
+    card.shadowRoot!.querySelector<HTMLButtonElement>('[data-zoom-in]')!.click();
+    await card.updateComplete;
+    expect(card.shadowRoot!.querySelector<HTMLButtonElement>('[data-zoom-reset]')!.disabled).toBe(false);
+    expect(call).toHaveBeenCalledTimes(1);
+    const checkbox = card.shadowRoot!.querySelector<HTMLInputElement>('[data-series]')!;
+    checkbox.checked = false; checkbox.dispatchEvent(new Event('change'));
+    await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('svg')).toBeNull();
+    expect(card.shadowRoot!.querySelector<HTMLButtonElement>('[data-export]')!.disabled).toBe(true);
+  });
+  it('inspects original unsampled data and explicitly displays unavailable samples', async () => {
+    const rows = Array.from({ length: 500 }, (_, i) => ({ entity_id: 'sensor.temperature', state: i === 1 ? 'unknown' : String(i), last_changed: new Date(Date.now() - 600000 + i * 1000).toISOString() }));
+    const { card } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    const chart = card.shadowRoot!.querySelector('svg')!;
+    chart.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' })); await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('[data-tooltip] time')!.getAttribute('datetime')).toBe(new Date(rows[0].last_changed).toISOString());
+    chart.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' })); await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('[data-tooltip]')!.textContent).toContain('Unavailable');
+    expect(card.shadowRoot!.querySelector('circle')).toBeNull();
+  });
+  it('scales the chart to original spikes even when plot sampling omits them', async () => {
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ entity_id: 'sensor.temperature', state: i === 1 ? '100' : '1', last_changed: new Date(Date.now() - 1200000 + i * 1000).toISOString() }));
+    const { card } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    const chart = card.shadowRoot!.querySelector('svg')!;
+    chart.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' })); await card.updateComplete;
+    chart.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' })); await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('.range')!.textContent).toContain('1–100');
+    const cy = Number(card.shadowRoot!.querySelector('circle')!.getAttribute('cy'));
+    expect(cy).toBeGreaterThanOrEqual(2);
+    expect(cy).toBeLessThanOrEqual(58);
+  });
+  it('exports every original selected reading and revokes its download URL on disconnect', async () => {
+    const rows = Array.from({ length: 500 }, (_, i) => ({ entity_id: 'sensor.temperature', state: String(i), last_changed: new Date(Date.now() - 600000 + i * 1000).toISOString() }));
+    const { card } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:history-test');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      card.shadowRoot!.querySelector<HTMLButtonElement>('[data-export]')!.click();
+      const csv = await (create.mock.calls[0][0] as Blob).text();
+      expect(csv.split('\r\n')).toHaveLength(502);
+      expect(csv).toContain('"499"');
+      expect(click).toHaveBeenCalledTimes(1);
+      card.remove();
+      expect(revoke).toHaveBeenCalledWith('blob:history-test');
+    } finally { create.mockRestore(); revoke.mockRestore(); click.mockRestore(); }
+  });
+  it('keeps zoom inside the fetched range and resets without another request', async () => {
+    const rows = [1, 2].map((state, i) => ({ entity_id: 'sensor.temperature', state: String(state), last_changed: new Date(Date.now() - 30000 + i * 10000).toISOString() }));
+    const { card, call } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    const initial = [...card.shadowRoot!.querySelectorAll('.times time')].map(el => el.getAttribute('datetime'));
+    card.shadowRoot!.querySelector('svg')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' })); await card.updateComplete;
+    card.shadowRoot!.querySelector<HTMLButtonElement>('[data-zoom-in]')!.click(); await card.updateComplete;
+    const zoomed = [...card.shadowRoot!.querySelectorAll('.times time')].map(el => el.getAttribute('datetime'));
+    expect(Date.parse(zoomed[0]!)).toBeGreaterThanOrEqual(Date.parse(initial[0]!));
+    expect(Date.parse(zoomed[1]!)).toBeLessThanOrEqual(Date.parse(initial[1]!));
+    expect(Date.parse(zoomed[1]!) - Date.parse(zoomed[0]!)).toBe(12 * 3600000);
+    card.shadowRoot!.querySelector<HTMLButtonElement>('[data-zoom-reset]')!.click(); await card.updateComplete;
+    expect([...card.shadowRoot!.querySelectorAll('.times time')].map(el => el.getAttribute('datetime'))).toEqual(initial);
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+  it('carries the last actual sample into a steady zoom window without inventing CSV rows', async () => {
+    const rows = [{ entity_id: 'sensor.temperature', state: '12', last_changed: new Date(Date.now() - 23 * 3600000).toISOString() }];
+    const { card } = setup(vi.fn().mockResolvedValue([rows]));
+    await vi.waitFor(() => expect(card.shadowRoot!.querySelector('svg')).not.toBeNull());
+    card.shadowRoot!.querySelector<HTMLButtonElement>('[data-zoom-in]')!.click(); await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('svg')).not.toBeNull();
+    expect(card.shadowRoot!.querySelector('.range')!.textContent).toContain('12–12');
+    card.shadowRoot!.querySelector('svg')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' })); await card.updateComplete;
+    expect(card.shadowRoot!.querySelector('[data-tooltip] time')!.getAttribute('datetime')).toBe(new Date(rows[0].last_changed).toISOString());
+    const csv = historyCsv([{ entity: 'sensor.temperature', name: 'Temperature', unit: '°C', rows }], Date.now() - 18 * 3600000, Date.now() - 6 * 3600000);
+    expect(csv.split('\r\n')).toHaveLength(2);
+  });
   it('deduplicates valid entity IDs and caps requests to eight entities', () => {
     expect(historyEntityIds(['sensor.a', 'sensor.a', 'bad value', ...Array.from({ length: 20 }, (_, i) => `sensor.n${i}`)])).toHaveLength(8);
   });

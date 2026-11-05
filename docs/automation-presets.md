@@ -1,157 +1,81 @@
-# Timed boost and ventilation presets
+# Persistent ventilation control in Home Assistant
 
-These optional Home Assistant examples run on the server. Closing the card or
-phone app does not stop the countdown or demand controller. The card does not
-install or enable automations itself.
+The optional backend runs in Home Assistant. Closing a browser or phone app does not control its timers or deadlines. The card never installs packages automatically.
 
-The supplied backend targets a **fan entity supporting percentage control**.
-For a select-only ESPHome controller or a legacy climate entity, adapt the fan
-actions and state comparisons to that integration's options before using it.
-A fan's motor duty reading is not a writable fan percentage entity.
+For all configuration examples and feature details, see the [ventilation insights guide](ventilation-insights.md).
 
-## Install the timed boost package
+## Install and configure
 
-1. Download [ventilation.yaml](../blueprints/packages/ventilation.yaml).
-2. Replace **every** `fan.ventilation` with the entity ID of the fan you intend to
-   control. Use one copy of the package per installation; helper/script names
-   must also be renamed if you configure more than one fan.
-3. Check that your fan accepts the requested percentages. Some fans quantize
-   percentages to discrete steps: choose a valid boost percentage, and use
-   valid speeds in the demand blueprint.
-4. Save it as `config/packages/ventilation.yaml`. Enable packages if needed:
+1. Copy `blueprints/packages/ventilation.yaml` to `config/packages/ventilation.yaml`.
+2. Enable packages under your existing `homeassistant` section if necessary:
 
    ```yaml
    homeassistant:
      packages: !include_dir_named packages
    ```
 
-5. Run Home Assistant's configuration check before restarting. Test with your
-   actual integration while watching the fan and automation traces.
+3. Run HA's configuration check before a reload or restart.
+4. Configure `input_text.ventilation_target` with your real fan, climate, select or input_select entity ID.
+5. Configure the Boost, Home, Away and Quiet raw-value helpers for that device.
+6. Exercise explicit commands and restoration before enabling automatic control.
 
-No changes to a running Home Assistant installation are made by downloading
-these examples. They have YAML/Jinja validation and decision-template tests,
-but they are not a substitute for testing against the target integration.
+For `climate.*`, map actual fan modes such as `low`, `medium` and `high`. For a select, use the exact advertised options. For `fan.*`, supply valid percentages. A motor duty sensor is not a controllable fan. Helpers retain their configured values across restarts; unconfigured helpers do not produce valid commands.
+
+Do not install multiple copies with the same helper names. When upgrading the original fan-only package, configure the new target/value helpers and review obsolete helper references before removing them.
 
 ## Card/backend contract
 
-| Entity | Purpose |
+| Entity | Function |
 | --- | --- |
-| `script.ventilation_boost` | Start or extend timed boost; receives `duration` in **minutes**, one of 15, 30 or 60. |
-| `script.ventilation_cancel_boost` | Cancel boost and restore its snapshot only if it still owns the fan setting. |
-| `timer.ventilation_boost` | Authoritative countdown; the card can display its `finishes_at` attribute. |
-| `input_boolean.ventilation_boost_active` | Indicates that a snapshot/deadline is armed. |
-| `input_boolean.ventilation_manual_override` | Prevent automatic control and prevent boost restoration. Turn it off deliberately to resume. |
-| `input_select.ventilation_preset` | Selected Auto, Home, Away, Quiet or Manual preset. |
-| `input_boolean.ventilation_automation_enabled` | Opt-in switch for demand control; starts disabled on HA startup. |
-| `input_number.ventilation_boost_percentage` | Boost command percentage; defaults to 100. |
+| `script.ventilation_boost` | Start or extend boost, with `duration` of 15, 30 or 60 minutes. |
+| `script.ventilation_cancel_boost` | Cancel boost and restore the original snapshot only while the backend owns the current setting. |
+| `timer.ventilation_boost` | Countdown display for the card. |
+| `input_boolean.ventilation_manual_override` | Prevent automatic control and boost restoration. |
+| `input_text.ventilation_target` | Actual target entity. |
+| `input_text.ventilation_boost_value` | Raw boost command value. |
+| `input_text.ventilation_home_value`, `ventilation_away_value`, `ventilation_quiet_value` | Explicit preset values. |
+| `input_select.ventilation_preset` | Auto, Home, Away, Quiet, or Manual mode. |
+| `input_boolean.ventilation_automation_enabled` | Opt-in demand control, disabled at startup. |
+| `sensor.ventilation_controller` | Reported controller source with detail attributes. |
 
-Start boost through a standard HA script call:
+Boost snapshots the original state, value and fan preset. Extension retains the original snapshot. A changed reported setting relinquishes ownership and enables manual override. Startup and 15-second reconciliation handle expired deadlines and device recovery. A different setting made while HA was offline prevents restoration. An external change back to the identical setting is not observable.
 
-```yaml
-action: script.turn_on
-target:
-  entity_id: script.ventilation_boost
-data:
-  variables:
-    duration: 30
-```
+The backend uses `fan.set_percentage`, `climate.set_fan_mode`, or the selector's `select_option` action. Climate restoration does not force an HVAC mode. Commands must match advertised capabilities/options. A command that does not reach its reported value produces a script timeout; inspect HA traces.
 
-Cancel through `script.ventilation_cancel_boost`. Use the cancel script rather
-than calling `timer.cancel` directly, because the script also handles ownership
-and snapshot restoration. A direct timer cancellation while boost is armed is
-reconciled from the stored deadline on the next minute.
+Home/Away/Quiet buttons explicitly cancel boost without restoration and apply their mapped value. Manual prevents automatic changes and cancels boost. Auto selects the demand-controller mode; the separately installed demand automation must be enabled to execute it.
 
-The package saves the original on/off state, percentage and preset. Extending
-an existing boost keeps that original snapshot. It restores a supported preset
-when one was active, otherwise it restores percentage or the previous off
-state. A later fan speed/preset/on-off change relinquishes ownership after a
-short settling delay, cancels boost without restoration, and enables manual
-override. A wall controller change must be reflected in the HA fan entity to
-be detected; choosing the exact same setting is not observable as a change.
+## Demand controller
 
-The timer has `restore: true`. An absolute deadline and a startup/minute
-reconciliation also handle expiry while HA was stopped: HA does not replay a
-missed `timer.finished` event. If the gateway is unavailable, reconciliation
-waits until valid readings return. The comparison with the fan's current
-setting prevents overwriting a different setting made while HA was offline.
-The ownership check cannot distinguish an external change back to exactly the
-same percentage and preset.
+Copy `blueprints/automation/ventilation_demand.yaml` to `config/blueprints/automation/comfoair/ventilation_demand.yaml`. Create an automation from it in HA's Blueprints interface.
 
-A failed fan request remains visible in the script trace. Its armed deadline
-will be reconciled, and restoration is skipped if ownership cannot be proven.
-This package assumes the integration reports commanded percentage and preset
-accurately; validate that behavior before relying on restoration.
+Select the same target used by the package. Configure Home/Demand/Away/Quiet raw values for a non-percentage device, or percentage values for a fan. Choose optional CO₂ and relative-humidity sensors. Set high/low thresholds, maximum reporting age, and minimum command interval for your installation. The example values are not health recommendations.
 
-## Demand, away and quiet control
+Auto raises demand when any sensor reaches its high threshold. It releases demand only after all selected sensors fall to their low thresholds. Home uses the baseline; Away and Quiet use their explicit policies. Away takes priority over Quiet. Missing, stale, wrong-unit and unavailable sensors freeze commands. Sensor freshness uses actual report timestamps, so unchanged but freshly reported values remain valid.
 
-Copy [ventilation_demand.yaml](../blueprints/automation/ventilation_demand.yaml)
-to `config/blueprints/automation/comfoair/ventilation_demand.yaml`, then create an
-automation from it in **Settings → Automations & scenes → Blueprints**. Select
-the same fan used in the boost package and the package's helpers.
+The priority order is disabled/manual override, then boost, then selected preset/helper state, then sensor demand. For direct speed changes outside boost, enable manual override deliberately or use the temporary schedule override. Automatic control remains disabled until you enable `input_boolean.ventilation_automation_enabled`.
 
-The blueprint has optional lists for CO₂ and relative humidity sensors. Leave
-an unused list empty. Configure all thresholds for the rooms and sensors you
-intend to control; the supplied values are examples, not recommended health
-or air-quality limits. CO₂ entities must report ppm and humidity entities %.
-Set the maximum reporting age to match the actual sensor update interval.
+## Optional packages
 
-- **Auto:** raise speed when any selected sensor reaches its high threshold.
-  Lower it only after every selected sensor falls to its low threshold. Values
-  between thresholds retain the demand state.
-- **Home:** use the configured home baseline.
-- **Away:** use the configured away speed. In Auto, optional away helpers also
-  select this behavior when on.
-- **Quiet:** cap the demand-based speed at the configured quiet maximum. In
-  Auto, optional quiet helpers also select this behavior when on. Away takes
-  priority when both helper sets are on.
-- **Manual:** make no automatic fan changes.
+The insights guide explains these separate files:
 
-The package exposes matching scripts: `script.ventilation_preset_auto`,
-`script.ventilation_preset_home`, `script.ventilation_preset_away`,
-`script.ventilation_preset_quiet` and `script.ventilation_preset_manual`.
-Selecting a preset takes effect on the next eligible controller run. The
-manual script also cancels an active boost without restoring its snapshot.
+- `ventilation_maintenance.yaml`: service records and reminder counter.
+- `ventilation_notifications.yaml`: persistent alerts, acknowledgement and recovery messages.
+- `ventilation_energy.yaml`: normalized energy, daily/monthly meters and estimate tariff.
+- `ventilation_airflow.yaml`: sustained deviation with grace, bypass, boost and stale-report checks.
+- `ventilation_schedule.yaml`: control from UI-created Quiet/Away schedules and manual override to the next real boundary.
 
-For quiet hours, create a Home Assistant schedule and an automation/template
-binary sensor that turns one selected quiet helper on during that schedule.
-For presence, update a selected away helper from your presence automation.
-The controller uses helper states, so these policies keep running without the
-browser. Those additional schedules and presence rules are user-specific.
+Configure placeholder entities before enabling any package. A schedule alone selects a preset; the enabled demand controller executes automatic changes. None of these files contains lighting automation.
 
-Automatic control is disabled until you turn on
-`input_boolean.ventilation_automation_enabled`. The controller evaluates once
-per minute and enforces the configured minimum interval between changes. The
-priority order is **disabled/manual override → timed boost → selected preset
-or away/quiet helpers → sensor demand**. Direct speed changes outside a boost
-need the explicit manual-override helper; otherwise Auto may change the speed
-on its next eligible run.
-
-Every selected sensor must exist, be numeric, report the expected unit and
-have a recent `last_reported` timestamp. Missing, unknown, stale or unavailable
-readings freeze fan commands rather than silently reducing ventilation. The
-same applies to missing away/quiet helpers. A stable sensor value remains
-valid when the integration continues to report it. Invalid threshold ordering
-also prevents commands. With no selected sensors, Auto uses the baseline and
-can still follow away/quiet helpers.
+Create `schedule.ventilation_quiet` and `schedule.ventilation_away` through **Settings → Devices & services → Helpers**. The package does not create YAML schedules. This permits changes through the visual schedule editor. See the [schedule setup steps](ventilation-insights.md#9-weekly-schedules).
 
 ## Validation
-
-Run the actual decision-template tests in a temporary Python environment:
 
 ```bash
 python3 -m venv /tmp/comfoair-automation-validation
 /tmp/comfoair-automation-validation/bin/pip install Jinja2 PyYAML
-/tmp/comfoair-automation-validation/bin/python blueprints/tests/test_automation_templates.py
+/tmp/comfoair-automation-validation/bin/python -m unittest discover -s blueprints/tests
 ```
 
-The tests cover YAML input references, Jinja syntax, ownership checks,
-unknown/stale/wrong-unit sensors, hysteresis and preset priority. They do not
-emulate the complete HA script engine or real fan devices. Before enabling
-control, also run HA's configuration check and exercise start, extension,
-cancel, expiry, restart, gateway loss and a manual fan change using automation
-traces.
+The tests parse YAML/Jinja and render real decision expressions for adapters, snapshots, priorities, stale data, thresholds, schedules, meters and alerts. They do not emulate the full HA automation engine or hardware. Before unattended use, run HA configuration checks and inspect actual traces for start, extension, cancellation, expiry, manual changes, restart and gateway loss. This branch does not install or activate any live configuration.
 
-References: [HA timers](https://www.home-assistant.io/integrations/timer/),
-[script variables](https://www.home-assistant.io/integrations/script/),
-[blueprint schema](https://www.home-assistant.io/docs/blueprint/schema/),
-[fan actions](https://www.home-assistant.io/integrations/fan/).
+References: [HA timers](https://www.home-assistant.io/integrations/timer/), [scripts](https://www.home-assistant.io/integrations/script/), [schedules](https://www.home-assistant.io/integrations/schedule/), [alerts](https://www.home-assistant.io/integrations/alert/), [utility meters](https://www.home-assistant.io/integrations/utility_meter/).

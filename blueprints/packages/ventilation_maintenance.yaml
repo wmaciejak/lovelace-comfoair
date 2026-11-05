@@ -1,0 +1,57 @@
+# Configure actual entities and values before enabling this optional package.
+input_datetime:
+  ventilation_filter_last_service:
+    name: Ventilation last filter service
+    has_date: true
+    has_time: true
+input_number:
+  ventilation_filter_service_count:
+    name: Ventilation recorded filter services
+    min: 0
+    max: 100000
+    step: 1
+  ventilation_filter_reminder_days:
+    name: Ventilation filter reminder lead time
+    min: 0
+    max: 90
+    step: 1
+input_text:
+  ventilation_filter_service_note:
+    name: Ventilation filter service note
+    max: 255
+script:
+  ventilation_record_filter_service:
+    alias: Ventilation record filter service
+    mode: single
+    sequence:
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.ventilation_filter_last_service
+      data:
+        timestamp: '{{ as_timestamp(now()) }}'
+    - action: input_number.increment
+      target:
+        entity_id: input_number.ventilation_filter_service_count
+    - action: logbook.log
+      data:
+        name: Ventilation filter service
+        message: '{{ states("input_text.ventilation_filter_service_note") }}'
+        entity_id: input_datetime.ventilation_filter_last_service
+template:
+- binary_sensor:
+  - name: Ventilation filter due
+    unique_id: ventilation_filter_due
+    availability: '{{ is_number(states(''sensor.ventilation_filter_days'')) and state_attr(''sensor.ventilation_filter_days'',''unit_of_measurement'')
+      in [''d'',''days''] }}'
+    state: '{{ states(''sensor.ventilation_filter_days'') | float(999) <= states(''input_number.ventilation_filter_reminder_days'')
+      | float(7) }}'
+- sensor:
+  - name: Ventilation filter last recorded service
+    unique_id: ventilation_filter_last_recorded_service
+    device_class: timestamp
+    availability: >-
+      {{ states('input_number.ventilation_filter_service_count') | int(0) > 0 and
+         state_attr('input_datetime.ventilation_filter_last_service','timestamp') is number }}
+    state: >-
+      {% set timestamp = state_attr('input_datetime.ventilation_filter_last_service','timestamp') %}
+      {{ as_datetime(timestamp).isoformat() if timestamp is number else none }}
