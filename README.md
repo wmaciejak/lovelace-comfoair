@@ -1,182 +1,232 @@
-# ComfoAir ventilation card for Home Assistant
+<h1 align="center">ComfoAir Card</h1>
 
-A Lovelace card for ComfoAir ventilation systems, including legacy CA350/550 bridges and compatible AERISnext/ESPHome installations.
-The card displays live measurements and controls the entities that your Home Assistant integration exposes.
+<p align="center">
+  <strong>A complete ventilation dashboard for Home Assistant.</strong><br>
+  Live airflow, native controls, useful insights, and optional persistent automations.<br>
+  Built for compatible ComfoAir, AERISnext, MQTT, and ESPHome installations.
+</p>
 
-[![HACS custom repository](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=wmaciejak&repository=lovelace-comfoair&category=plugin)
+<p align="center">
+  <a href="https://github.com/wmaciejak/lovelace-comfoair/releases"><img src="https://img.shields.io/github/v/release/wmaciejak/lovelace-comfoair?style=flat-square&color=087e8b" alt="Latest release"></a>
+  <a href="https://github.com/wmaciejak/lovelace-comfoair/actions/workflows/ci.yml"><img src="https://github.com/wmaciejak/lovelace-comfoair/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="hacs.json"><img src="https://img.shields.io/badge/Home_Assistant-2025.10%2B-41BDF5?style=flat-square" alt="Home Assistant 2025.10 or newer"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-70839a?style=flat-square" alt="MIT license"></a>
+</p>
 
-<img src="https://raw.githubusercontent.com/TimWeyand/lovelace-comfoair/master/images/static-dark.png" alt="ComfoAir card in a dark theme" width="440">
+<p align="center">
+  <a href="#installation">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#configuration-examples">Examples</a> ·
+  <a href="docs/configuration.md">Configuration reference</a> ·
+  <a href="#documentation">Guides</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+    <img src="docs/images/overview-dark.png" width="1080" alt="English ComfoAir Card screenshots: full airflow view with temperatures and telemetry, beside compact native fan controls and boost presets">
+  </picture>
+</p>
+
+<p align="center"><sub>Current repository build with English demo entities. Theme colors come from the screenshot host. No live device connection.</sub></p>
+
+ComfoAir Card brings your ventilation measurements and controls into one Lovelace card. Start with a `climate`, `fan`, or speed `select` entity. Add the sensors and actions that your integration provides. Use the full airflow view or a compact layout for smaller dashboards.
+
+The card works through existing Home Assistant entities. Device support depends on your gateway and firmware. Optional backend packages provide timers, schedules, alerts, and demand control in Home Assistant.
 
 ## Features
 
-- Support for `climate.*`, native `fan.*`, and speed `select.*` entities.
-- MQTT and ESPHome profiles with a device selector and a preview of entity assignments.
-- Four temperature values, fan RPM, fan duty, and temperature-based airflow colors.
-- Optional actual airflow, humidity, power, energy, and preheater power measurements.
-- Temperature recovery estimates or exchanger effectiveness from separate inlet and outlet sensors.
-- Binary or numeric bypass/filter status, with unavailable data identified explicitly.
-- Optional airflow direction, operating mode, boost, and filter controls.
-- Script-based boost shortcuts for 15, 30, or 60 minutes, plus a timer display and preset buttons.
-- Optional history charts for 1 hour, 24 hours, or 7 days.
-- Full and compact layouts, selectable status indicators, and configurable telemetry order.
-- Static or animated airflows, reduced-motion support, and keyboard-accessible history buttons.
-- English, Polish, German, and Dutch labels, with Home Assistant number-format support.
+| Area | Included capabilities |
+| --- | --- |
+| **Airflow at a glance** | Four temperature points, fan RPM, fan duty, color-coded air paths, optional animation, and a temperature legend. |
+| **Native device controls** | Climate fan modes and supported setpoints, native fan percentages/presets, and advertised speed-selector options. |
+| **Guided setup** | MQTT and ESPHome profiles, a device selector, assignment previews, and manual sensor configuration. |
+| **Setup diagnostics** | Missing/unavailable entity checks, unit checks, ambiguous-role reports, and explicit repair previews that preserve live assignments. |
+| **Live measurements** | Supply/extract airflow and humidity, electrical power, cumulative energy, and preheater power. |
+| **Recovery estimates** | Temperature recovery or exchanger effectiveness, with Celsius/Fahrenheit/Kelvin conversion and sensor-location checks. |
+| **Additional controls** | Airflow direction, operating mode, boost switches, duration values, filter intervals, and a confirmed filter-counter reset. |
+| **Persistent boost** | 15/30/60-minute shortcuts, a countdown, extension/cancellation, restart reconciliation, and state-ownership checks before restoration. |
+| **Demand control** | CO₂/humidity hysteresis, report-age checks, minimum command intervals, and Auto/Home/Away/Quiet/Manual policies. |
+| **Control context** | A reported controller source, optional next transition, and explicit manual override. |
+| **Filter care** | Remaining days, an estimated due date, confirmed service records, a service count/note, and HA Logbook history. |
+| **Fault alerts** | Optional persistent HA notifications, repeat intervals, acknowledgement, and recovery messages. |
+| **Energy and cost** | Daily/monthly Utility Meters, previous-period comparisons, and estimates at your current configured tariff. |
+| **Airflow balance** | Signed supply/extract imbalance, a configurable baseline, and sustained-deviation checks with grace/bypass/boost/stale-data handling. |
+| **Summer advice** | Temperature and absolute-humidity comparisons, plus buttons for real, advertised bypass-selector options. |
+| **Weekly schedules** | Editable HA Schedule helpers, Quiet/Away priority, and manual override until the next real schedule boundary. |
+| **Interactive history** | 1-hour/24-hour/7-day views, original-reading tooltips, touch/keyboard inspection, zoom/reset, series selection, and CSV export. |
+| **Dashboard fit** | Full/compact layouts, selected status indicators, custom telemetry order, Sections sizing, and reduced-motion support. |
+| **Localization** | English/Polish interfaces, German/Dutch core and history labels, per-card language selection, and localized measurements. |
 
-Existing climate configurations remain compatible. New features are optional.
-The card does not create device capabilities or install automations.
+Mapped entities determine which optional sections appear. See the [complete configuration reference](docs/configuration.md) for every card option.
+
+## Gallery
+
+<details>
+<summary><strong>Care, schedules, energy, airflow balance, and summer advice</strong></summary>
+
+![English insight panels with filter maintenance, controller context, alerts, schedules, energy costs, airflow balance, and summer advice](docs/images/insights.png)
+
+Service records and device counter resets are separate actions. Summer advice does not send automatic commands. Cost figures use the current tariff.
+
+</details>
+
+<details>
+<summary><strong>Interactive history with original readings and CSV export</strong></summary>
+
+![English interactive history with three sensor series, an exact-reading tooltip, time ranges, zoom controls, series checkboxes, and CSV export](docs/images/history.png)
+
+Use a pointer, touch, or the arrow keys to inspect readings. **Home/End** select the first/last sample. Zoom preserves a steady state at the visible boundary. CSV contains original observations from the visible series and interval.
+
+</details>
+
+All screenshots use English labels and demonstration data. The [screenshot guide](docs/images/README.md) explains reproduction and asset credits.
 
 ## Installation
 
 ### HACS
 
-1. Select **Open in HACS** above.
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=wmaciejak&repository=lovelace-comfoair&category=plugin)
+
+1. Open the HACS link above.
 2. Download **MQTT Comfoair Card**.
+3. Reload your Home Assistant dashboard.
 
-If HACS does not find the repository, add it manually:
+If HACS cannot find the repository, add a [custom repository](https://hacs.dev/docs/faq/custom_repositories/):
 
-1. Open **HACS → ⋮ → Custom repositories**.
-2. Enter `https://github.com/wmaciejak/lovelace-comfoair`.
-3. Select **Dashboard**, then select **Add**.
-4. Download **MQTT Comfoair Card**.
+| Field | Value |
+| --- | --- |
+| Repository | `https://github.com/wmaciejak/lovelace-comfoair` |
+| Type | **Dashboard** |
+| Download name | **MQTT Comfoair Card** |
+
+HACS retains the legacy download name. The card type remains `custom:mqttcomfoair-card`.
+
+The dashboard resource uses **JavaScript module**:
+
+```yaml
+url: /hacsfiles/lovelace-comfoair/comfoair-card.js
+type: module
+```
+
+Check for an existing resource before you add one. Keep one ComfoAir resource. This fork and the upstream card register the same custom elements. See the [HACS dashboard guide](https://hacs.dev/docs/use/repositories/type/dashboard/) for resource details.
 
 ### Manual installation
 
 1. Download `comfoair-card.js` from the [latest release](https://github.com/wmaciejak/lovelace-comfoair/releases/latest).
-2. Copy the file to `config/www/lovelace-comfoair/comfoair-card.js`.
-3. Add this dashboard resource as a JavaScript module:
+2. Copy it to `config/www/lovelace-comfoair/comfoair-card.js`.
+3. Add the following resource as a **JavaScript module**.
+4. Reload the dashboard.
 
 ```yaml
 url: /local/lovelace-comfoair/comfoair-card.js
 type: module
 ```
 
-Use only one ComfoAir resource. This fork and the upstream card register the same custom elements.
-Remove the previous resource entry before you add the replacement.
-Reload the dashboard after an update. If the Companion app retains old labels, reset its frontend cache.
+The manifest requires **Home Assistant 2025.10.0 or newer**. Documentation follows the repository source. Check the release notes for the version that HACS installs.
 
 ## Quick start
 
 1. Add **MQTT Comfoair Card** to a dashboard.
-2. Select the ventilation entity.
-3. For profile-based setup, select **MQTT** or **ESPHome**, then select the device.
-4. Review the detected entities and select **Apply detected entities**.
-5. Use **Advanced / manual mapping** to adjust individual assignments.
-
-Profile application preserves existing assignments. Automatic detection also runs when you select a different primary entity.
-A primary entity change clears the previous sensor assignments before detection.
+2. Select your ventilation entity.
+3. Select the **MQTT** or **ESPHome** profile and the device, if applicable.
+4. Review the detected assignments before you apply them.
+5. Add optional controls and sensors through the editor.
 
 ```yaml
 type: custom:mqttcomfoair-card
-entity: climate.ca350_climate
-language: auto
+entity: climate.ventilation
+name: Ventilation
+language: en
 animation: animated
 show_legend: true
 ```
 
-### Supported primary entities
+Profile application preserves existing assignments. A change to the primary entity clears previous sensor assignments before automatic detection. Use **Setup diagnostics** to review missing entities, invalid units, and proposed repairs.
 
-| Entity | Controls |
+### Integration compatibility
+
+| Primary entity | Available controls |
 | --- | --- |
-| `climate.*` | Advertised fan modes and temperature setpoint controls, when supported. |
-| `fan.*` | Percentage control, when supported, and advertised preset modes. |
+| `climate.*` | Advertised fan modes and a temperature setpoint when the entity supports it. |
+| `fan.*` | Percentage control and advertised presets when the entity supports them. |
 | `select.*` | The entity's advertised speed options. |
 
-The legacy MQTT bridge is [hacomfoairmqtt](https://github.com/adorobis/hacomfoairmqtt), also used by comfoair2mqtt.
-For that bridge, enable `HAEnableAutoDiscoveryClimate` in `config.ini` if the climate entity is absent.
-Other integrations require their own device setup.
-A gateway with sensors alone cannot gain control functions from this card.
+The optional backend also accepts `input_select.*` targets. The card's primary entity accepts the three domains above.
 
-## Native ESPHome and AERISnext
+Legacy CA350/550 installations can use [hacomfoairmqtt / comfoair2mqtt](https://github.com/adorobis/hacomfoairmqtt). Native AERISnext support depends on the entities that your ESPHome gateway exposes. A gateway with sensors alone still needs a suitable control entity for the primary card.
 
-The card can use native entities without synthetic climate or binary status helpers, if the integration supplies a suitable primary entity.
-Replace these example IDs with your own entities:
+## Configuration examples
+
+Replace the example entity IDs with your own. All optional fields extend the basic card configuration.
+
+<details>
+<summary><strong>Native ESPHome / AERISnext with telemetry and history</strong></summary>
 
 ```yaml
 type: custom:mqttcomfoair-card
 entity: select.ventilation_speed
-language: auto
+language: en
 layout: full
-status_chips: [fan, filter, bypass]
+status_chips: [fan, filter, bypass, preheat, season]
+
 tempSensor1: sensor.ventilation_outdoor_air_temp
 tempSensor2: sensor.ventilation_exhaust_air_temp
 tempSensor3: sensor.ventilation_extract_air_temp
 tempSensor4: sensor.ventilation_post_heater_temp_after
+fan_speed_supply: sensor.ventilation_supply_fan_speed
+fan_speed_exhaust: sensor.ventilation_exhaust_fan_speed
+supply_air_level: sensor.ventilation_supply_fan_duty
+return_air_level: sensor.ventilation_exhaust_fan_duty
+
 bypass_valve: sensor.ventilation_bypass_state
 bypass_mode: positive
 filterstatus: sensor.ventilation_days_remaining_filter
 filter_mode: nonpositive
+
 airflow_supply: sensor.ventilation_supply_fan_flow
 airflow_extract: sensor.ventilation_exhaust_fan_flow
 humidity_supply: sensor.ventilation_supply_air_humidity
 humidity_extract: sensor.ventilation_extract_air_humidity
 power: sensor.ventilation_power_consumption_current
 energy: sensor.ventilation_energy_consumption_since_start
+preheater_power: sensor.ventilation_preheater_power_usage
+telemetry_order: [power, airflow_supply, airflow_extract, energy]
+
+history_entities:
+  - sensor.ventilation_outdoor_air_temp
+  - sensor.ventilation_supply_fan_flow
+  - sensor.ventilation_power_consumption_current
+history_hours: 24
 ```
 
-Use `entity: fan.ventilation` for a native fan. Retain an existing climate wrapper if your gateway has no native fan or speed selector.
-Entity names vary with firmware. See the [native ventilation guide](docs/native-ventilation.md) for additional examples.
+Use `entity: fan.ventilation` for a native fan. Retain a suitable climate wrapper if your gateway has no native fan or speed selector. Sensor names vary with firmware. The [native ventilation guide](docs/native-ventilation.md) explains the supported entity roles.
 
-## Recovery calculations and units
+</details>
 
-`recovery_mode: temperature` is the default. It estimates temperature recovery from outdoor, extract, and supply temperatures.
-Preheaters and post-heaters can influence this value. It is not a measurement of energy savings.
-
-For exchanger effectiveness, select sensors at the exchanger inlet and outlet:
-
-```yaml
-recovery_mode: exchanger
-exchanger_inlet: sensor.ventilation_pre_heater_temp_after
-exchanger_outlet: sensor.ventilation_post_heater_temp_before
-# tempSensor3 is the extract air entering the exchanger.
-```
-
-Confirm the sensor locations for your installation. A sensor after a post-heater is unsuitable for `exchanger_outlet`.
-The calculation supports heat and cooling recovery. It remains hidden for open/unknown bypass, invalid readings, or an insufficient temperature difference.
-Results outside 0–100% remain hidden. Use `recovery_mode: hidden` to hide all recovery calculations.
-
-Temperature badges display one decimal and retain each sensor's unit.
-Calculations normalize Celsius, Fahrenheit, and Kelvin to Celsius. Color-scale limits and the legend use Celsius.
-Actual airflow retains its sensor unit, such as m³/h. Fan duty remains a separate percentage value.
-
-## Status and additional controls
-
-By default, `bypass_valve` and `filterstatus` accept binary states.
-Set `bypass_mode: positive` for a numeric bypass percentage: values above zero mean open.
-Set `filter_mode: nonpositive` for days remaining: zero or negative values mean the filter service is due.
-This counter does not measure filter contamination.
-
-Missing or unavailable status values do not appear as healthy states.
-Unsupported climate controls remain hidden. Failed requests display an error, and command controls remain disabled during a request.
-
-Configure optional controls under **Controls** in the visual editor:
+<details>
+<summary><strong>Additional device controls</strong></summary>
 
 ```yaml
 show_controls: true
-airflow_control: select.ca350_fancontrol
-operating_mode_control: select.ca350_operating_mode
-boost_control: switch.ca350_boost
-boost_duration: number.ca350_boost_duration
-filter_reset: button.ca350_reset_filter
-filter_interval: number.ca350_filter_weeks
+airflow_control: select.ventilation_airflow_direction
+operating_mode_control: select.ventilation_operating_mode
+boost_control: switch.ventilation_boost
+boost_duration: number.ventilation_boost_duration
+filter_reset: button.ventilation_reset_filter
+filter_interval: number.ventilation_filter_weeks
 ```
 
-| Setting | Supported domains | Function |
-| --- | --- | --- |
-| `airflow_control` | `select`, `input_select` | Select an advertised airflow direction. |
-| `operating_mode_control` | `select`, `input_select` | Select an advertised mode. |
-| `boost_control` | `switch`, `input_boolean` | Start or stop boost. |
-| `boost_duration` | `number`, `input_number` | Set the duration value used by the integration or an automation. |
-| `filter_reset` | `button`, `input_button` | Reset the counter after confirmation. |
-| `filter_interval` | `number`, `input_number` | Set the interval within the entity's limits. |
+Leave unsupported controls unset. Numeric values require **Apply**. Filter-counter reset requires confirmation. Translated labels preserve the raw option values sent to Home Assistant.
 
-Leave unsupported controls unset. `show_controls: false` hides this section.
-Numeric changes require **Apply**. Option values reach Home Assistant unchanged, regardless of their translated display labels.
-A duration helper alone does not stop a fan. The integration or a server automation must implement that behavior.
+A duration helper alone does not stop boost. The integration or a backend automation must implement the deadline.
 
-## Persistent boost and demand presets
+</details>
 
-The card can call HA scripts for boost and **Auto**, **Home**, **Away**, and **Quiet** presets:
+<details>
+<summary><strong>Persistent timed boost and presets</strong></summary>
 
 ```yaml
 boost_script: script.ventilation_boost
@@ -189,97 +239,150 @@ preset_quiet_script: script.ventilation_preset_quiet
 manual_override: input_boolean.ventilation_manual_override
 ```
 
-Boost shortcuts pass `duration` in minutes: 15, 30, or 60. The timer supplies the countdown.
-The browser only displays remaining time. The HA backend owns the control deadline and restoration of the previous state.
+Install and configure the [backend package and demand blueprint](docs/automation-presets.md) separately. The backend supports fan percentages, climate fan modes, and raw selector options. Configure the target and command values before use.
 
-The optional [package and blueprint](docs/automation-presets.md) provide:
+The boost timer runs in Home Assistant. Closing the dashboard does not cancel it. Restoration requires the expected state to match. Manual changes take priority.
 
-- Boost extension, cancellation, restart reconciliation, and checks before restoration of the previous fan state.
-- Manual override priority and detection of fan changes during boost.
-- CO₂/humidity demand control with hysteresis and stale-data checks.
-- Home, Away, Quiet, Auto, and Manual presets, with optional away/quiet helpers.
+</details>
 
-**The supplied backend requires a percentage-capable `fan.*` entity.** Adapt its actions and comparisons for a climate or select controller.
-The card supports those domains independently of the example backend.
-Install the package separately, run HA's configuration check, and validate device behavior before you enable automatic control.
-The demand controller starts disabled. Configure sensor thresholds for your installation.
-
-## Telemetry and history
-
-Optional telemetry fields are `airflow_supply`, `airflow_extract`, `humidity_supply`, `humidity_extract`, `power`, `energy`, and `preheater_power`.
-Each field accepts a sensor entity. The sensor supplies the value and unit.
+<details>
+<summary><strong>Maintenance, alerts, energy, summer advice, and schedules</strong></summary>
 
 ```yaml
-telemetry_order: [power, airflow_supply, airflow_extract, energy]
-history_entities:
-  - sensor.ventilation_outdoor_air_temp
-  - sensor.ventilation_extract_air_temp
-  - sensor.ventilation_power_consumption_current
-history_hours: 24
+filter_days_remaining: sensor.ventilation_days_remaining_filter
+filter_last_service: sensor.ventilation_filter_last_recorded_service
+filter_service_script: script.ventilation_record_filter_service
+controller_source: sensor.ventilation_controller
+fault_entity: alert.ventilation_attention
+fault_ack_script: script.ventilation_acknowledge_alert
+
+energy_day: sensor.ventilation_energy_day
+energy_previous_day: sensor.ventilation_previous_day_energy
+energy_month: sensor.ventilation_energy_month
+energy_previous_month: sensor.ventilation_previous_month_energy
+energy_tariff: sensor.ventilation_estimate_tariff
+
+airflow_supply: sensor.ventilation_supply_fan_flow
+airflow_extract: sensor.ventilation_exhaust_fan_flow
+airflow_baseline: 0
+airflow_tolerance: 10
+airflow_sustained_fault: binary_sensor.ventilation_sustained_airflow_deviation
+
+summer_indoor_temperature: sensor.indoor_temperature
+summer_outdoor_temperature: sensor.outdoor_temperature
+summer_indoor_humidity: sensor.indoor_relative_humidity
+summer_outdoor_humidity: sensor.outdoor_relative_humidity
+summer_minimum_difference: 2
+# Optional: use a real selector and its exact advertised values.
+summer_bypass_control: select.ventilation_bypass_mode
+summer_bypass_open_option: open
+summer_bypass_auto_option: auto
+
+schedule_entity: schedule.ventilation_quiet
+schedule_next_transition: sensor.ventilation_schedule_next_transition
+schedule_override_script: script.ventilation_override_to_next_boundary
+manual_override_until: input_datetime.ventilation_override_until
 ```
 
-`telemetry_order` places those mapped tiles first. Other mapped tiles follow afterward.
-History uses the authenticated HA history API and requires Recorder data for the selected entities.
-The card supports 1-hour, 24-hour, and 7-day views, plus manual refresh.
+The [insights guide](docs/ventilation-insights.md) covers prerequisites and each calculation. Use the recorded-service sensor above to avoid a false initial service date. Configure the tariff unit, such as `EUR/kWh` or `PLN/kWh`.
 
-Requests contain at most eight entities and 168 hours. Each chart contains at most 240 points, with gaps for unavailable data.
-The charts share a time range and use separate value scales and units.
+Create the Quiet/Away Schedule helpers through the HA interface. YAML schedules cannot use the visual schedule editor. A temporary override requires a real future schedule boundary.
 
-## Layout, animation, and accessibility
+</details>
+
+<details>
+<summary><strong>Layout, animation, and recovery calculations</strong></summary>
 
 ```yaml
-layout: compact                 # full (default) or compact
+layout: compact
 status_chips: [fan, filter, bypass]
-animation: static              # static (default) or animated
-animation_speed_source: fixed  # fixed (default) or level
-animation_speed: 50             # 10–200%, for fixed speed
-color_scale: auto               # auto (default) or fixed
-temp_min: -10                   # Celsius, for a fixed color scale
+animation: static
+animation_speed_source: fixed
+animation_speed: 50
+color_scale: fixed
+temp_min: -10
 temp_max: 30
 show_legend: false
+
+# Optional exchanger calculation: verify the physical sensor locations.
+recovery_mode: exchanger
+exchanger_inlet: sensor.ventilation_pre_heater_temp_after
+exchanger_outlet: sensor.ventilation_post_heater_temp_before
+# tempSensor3 must measure extract air entering the exchanger.
 ```
 
-Compact mode removes decorative airflow graphics and retains the controls.
-`status_chips` selects visible indicators from `fan`, `filter`, `bypass`, `preheat`, and `season`. An empty list hides all indicators.
-Custom CSS is optional. Sections views use 12 columns and automatic height by default.
-History buttons support keyboard access.
+Compact mode removes the decorative airflow graphic and retains the controls. Animation can use a fixed speed or the reported fan duty. Reduced-motion preferences stop decorative motion. Sections views default to 12 columns and automatic height.
 
-Reduced-motion preferences stop decorative motion.
+Temperature recovery can include heater effects. Exchanger effectiveness requires correctly placed sensors and a known closed bypass. These figures do not measure energy savings. Select `recovery_mode: hidden` to hide the calculation.
 
-Static mode has no airflow or fan animation. State updates concern the configured entities.
-An optional boost countdown refreshes its display once per second. History requests follow range changes or manual refresh.
+</details>
 
-## Languages and number formats
+## Optional Home Assistant backend
 
-Use `language: auto` to follow the HA user language. Per-card overrides accept `en`, `pl`, `de`, and `nl`.
-Existing Norwegian messages remain available, with English fallback for missing translations.
-For temperature badges, RPM, and fan duty, the HA profile's number format controls the decimal separator independently of the card language.
-Telemetry uses the HA language locale. History charts use the card language locale.
-Temperature badges use one decimal to avoid long raw sensor values. RPM and duty values retain the existing decimal-format behavior.
+HACS installs the dashboard card. Copy and configure backend files separately. Check the HA configuration before a reload or restart.
 
-Localization includes work from upstream [PR #3](https://github.com/TimWeyand/lovelace-comfoair/pull/3),
-[PR #4](https://github.com/TimWeyand/lovelace-comfoair/pull/4), and [PR #5](https://github.com/TimWeyand/lovelace-comfoair/pull/5).
-The additional controls address [upstream issue #2](https://github.com/TimWeyand/lovelace-comfoair/issues/2).
-
-## Gallery
-
-These upstream images illustrate the original full layout. The optional telemetry and history sections extend that layout.
-
-| Theme | Static | Animated |
+| Component | Purpose | Setup |
 | --- | --- | --- |
-| Light | <img src="https://raw.githubusercontent.com/TimWeyand/lovelace-comfoair/master/images/static-light.png" width="320" alt="Static card, light theme"> | <img src="https://raw.githubusercontent.com/TimWeyand/lovelace-comfoair/master/images/animated-light.gif" width="320" alt="Animated card, light theme"> |
-| Dark | <img src="https://raw.githubusercontent.com/TimWeyand/lovelace-comfoair/master/images/static-dark.png" width="320" alt="Static card, dark theme"> | <img src="https://raw.githubusercontent.com/TimWeyand/lovelace-comfoair/master/images/animated-dark.gif" width="320" alt="Animated card, dark theme"> |
+| [Main control package](blueprints/packages/ventilation.yaml) | Target adapters, timed boost, presets, state snapshots, and manual override. | [Control guide](docs/automation-presets.md) |
+| [Demand blueprint](blueprints/automation/ventilation_demand.yaml) | CO₂/humidity demand with hysteresis, stale-report checks, and minimum command intervals. | [Demand setup](docs/automation-presets.md#demand-controller) |
+| [Maintenance package](blueprints/packages/ventilation_maintenance.yaml) | Service records, notes, counts, and reminder lead time. | [Filter care](docs/ventilation-insights.md#3-filter-maintenance) |
+| [Energy package](blueprints/packages/ventilation_energy.yaml) | Wh/kWh normalization, daily/monthly meters, previous periods, and a tariff helper. | [Energy setup](docs/ventilation-insights.md#6-energy-and-cost) |
+| [Airflow package](blueprints/packages/ventilation_airflow.yaml) | Sustained deviation with grace, boost, bypass, and report-age checks. | [Airflow setup](docs/ventilation-insights.md#7-airflow-balance) |
+| [Alert package](blueprints/packages/ventilation_notifications.yaml) | Persistent notifications, repeats, acknowledgement, and recovery. | [Alert setup](docs/ventilation-insights.md#5-fault-and-connection-alerts) |
+| [Schedule package](blueprints/packages/ventilation_schedule.yaml) | UI-created weekly schedules and owned overrides to the next boundary. | [Schedule setup](docs/ventilation-insights.md#9-weekly-schedules) |
 
-## Validation status
+Automatic control and alert examples start disabled. Replace placeholder entities and configure the helpers before you enable them. Validate commands, cancellation, restoration, manual intervention, and restart behavior against your device.
 
-Local tests cover native controls, recovery and unit calculations, status interpretation, history responses, layouts, and localized temperature precision.
-Chromium/WebKit tests cover responsive widths, unavailable entities, multiple cards, reloads, and native controls with telemetry.
-The backend examples have YAML/Jinja decision-template tests. These tests do not emulate the complete HA automation engine.
+## Data, history, and calculations
 
-Live validation on an AERISnext installation confirmed telemetry, numeric filter/bypass status, exchanger recovery display, history range changes, and compact layout.
-That gateway has no native fan or speed selector. Native command execution and backend boost/demand automation remain unverified on that installation.
+- **Measurements:** temperature badges retain the sensor unit. Calculations normalize Celsius, Fahrenheit, and Kelvin. Color limits use Celsius.
+- **Airflow:** actual flow and fan-duty percentage remain separate measurements. Balance accepts m³/h, m3/h, and L/s.
+- **Energy:** period comparisons accept Wh/kWh. Cost estimates multiply consumption by the current tariff. First meter cycles can be partial.
+- **Summer advice:** the comparison uses absolute humidity in g/m³. Outdoor air can be cooler but contain more moisture.
+- **History:** Recorder must retain the selected entities. Requests use at most eight entities and 168 hours. Charts use separate scales and units.
+- **CSV:** charts use at most 240 sampled points per series. Tooltips and CSV retain original readings. CSV uses UTC timestamps and spreadsheet-safe text.
+- **Historical metadata:** exported names and units reflect current entity metadata. A historical unit change requires a separate source-data check.
 
-## Development and releases
+## Languages and accessibility
+
+Set `language: auto` to follow your HA language. Choose `en`, `pl`, `de`, or `nl` for a per-card override.
+
+| Interface area | English | Polish | German | Dutch |
+| --- | :---: | :---: | :---: | :---: |
+| Core card and device controls | ✓ | ✓ | ✓ | ✓ |
+| Interactive history | ✓ | ✓ | ✓ | ✓ |
+| New insight panels | ✓ | ✓ | English fallback | English fallback |
+
+The core temperature/RPM/duty displays respect the HA profile's number format. Telemetry uses the HA language locale. History and insight panels use the card language locale.
+
+Controls provide keyboard focus. History supports pointer, touch, arrow keys, Home/End, and Escape. Reduced-motion preferences stop fan rotation and decorative airflow motion.
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| [Configuration reference](docs/configuration.md) | Every card option, accepted entity domains, defaults, and interpretation modes. |
+| [Ventilation insights](docs/ventilation-insights.md) | All ten additions: adapters, diagnostics, maintenance, context, alerts, energy, balance, summer advice, schedules, and interactive history. |
+| [Persistent control and presets](docs/automation-presets.md) | Package installation, target values, boost ownership, demand priority, and backend validation. |
+| [Native ventilation](docs/native-ventilation.md) | MQTT/ESPHome entity roles, native fan/select setup, telemetry, and recovery calculations. |
+| [Screenshot reproduction](docs/images/README.md) | English demo screenshots, the renderer, and asset credits. |
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `Custom element doesn't exist: mqttcomfoair-card` | Confirm one resource URL, the **JavaScript module** type, and a successful file load. Reload the frontend. |
+| Old labels or a mobile configuration error | Confirm the resource version. Remove duplicate entries. Reset the Companion app's frontend cache if it retains an old bundle. |
+| A missing entity or blank measurement | Review the editor diagnostics and entity IDs. Confirm that the integration reports an available value with the expected unit. |
+| No native speed or setpoint control | Check the primary entity's advertised capabilities and options. A sensor-only gateway needs a suitable control entity. |
+| No history | Confirm Recorder data for the selected sensors and the requested time range. Use **Refresh** after a temporary request failure. |
+| Exchanger effectiveness is hidden | Check sensor placement, numeric data, a known closed bypass, and a sufficient temperature difference. |
+| A boost does not restore its previous state | Inspect HA traces, the snapshot match, manual override, and device availability. Read the ownership rules in the control guide. |
+| A schedule remains empty | Create the Schedule helpers through the HA interface. Confirm the entity IDs and actual weekly time blocks. |
+
+For a reproducible card issue, [open an issue](https://github.com/wmaciejak/lovelace-comfoair/issues/new) with the card/HA versions, sanitized YAML, expected behavior, and the browser error. Include the relevant entity domains and units.
+
+## Development
 
 ```bash
 npm ci
@@ -290,15 +393,20 @@ npx playwright install chromium webkit
 npm run test:browser
 ```
 
-For the backend example tests, follow the [Python environment instructions](docs/automation-presets.md#validation).
+Run the [backend template tests](docs/automation-presets.md#validation) after changes to the packages or blueprint. To regenerate the English screenshots after a build:
 
-CI checks TypeScript, unit tests, the bundle, and Chromium/WebKit tests.
-On a push to `master`, the release workflow validates the project and publishes the bundle.
-It uses the version in `package.json`, or increments the patch version if that tag exists.
-Set the package version for an intentional minor or major release.
+```bash
+node scripts/readme-screenshots.mjs
+```
 
-## Compatibility
+CI checks TypeScript, unit tests, backend decision templates, the committed bundle, and Chromium/WebKit behavior. Browser tests include responsive layouts, unavailable entities, touch/keyboard inspection, and real CSV downloads.
 
-Existing entity keys remain supported. A legacy climate configuration does not require conversion to native fan/select controls.
-Legacy devices compatible with the same serial bridge include StorkAir WHR930, Wernig G90-380, and Paul Santos 370 DC.
-Native AERISnext support depends on the entities and actions that the installed gateway exposes.
+Backend tests parse YAML/Jinja and exercise decisions and helper ownership. They do not emulate the full HA automation engine or hardware.
+
+The release workflow runs on `master`. It builds the bundle, updates the release version, and publishes a GitHub release. Set `package.json` for an intentional minor or major version change.
+
+## Credits and license
+
+This fork builds on [TimWeyand/lovelace-comfoair](https://github.com/TimWeyand/lovelace-comfoair) and the [hacomfoairmqtt](https://github.com/adorobis/hacomfoairmqtt) ecosystem. The project uses [Lit](https://lit.dev/) and Home Assistant's custom-card helpers.
+
+The card code uses the [MIT license](LICENSE). Screenshot icon credits and their separate license appear in the [asset notes](docs/images/README.md).
