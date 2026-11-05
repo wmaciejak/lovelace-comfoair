@@ -6,10 +6,16 @@ import { EDITOR_TYPE, ENTITY_FIELDS } from './const';
 import { autodetectEntities } from './helpers';
 import { localize, resolveLanguage } from './localize';
 import { CONTROL_DEFINITIONS } from './controls';
+import { INTELLIGENCE_FIELDS } from './intelligence-config';
+import { diagnoseConfig, repairMappings } from './diagnostics';
 import { detectProfile, IntegrationProfile } from './profiles';
 type FormSchema = Record<string, unknown>;
 
 const ADVANCED_SCHEMA: FormSchema[] = [
+  ...INTELLIGENCE_FIELDS.map(name=>({name,selector:{entity:{}}})),
+  {name:'show_intelligence',selector:{boolean:{}}},
+  ...['airflow_baseline','airflow_tolerance','summer_minimum_difference'].map(name=>({name,selector:{number:{mode:'box'}}})),
+  ...['summer_bypass_open_option','summer_bypass_auto_option'].map(name=>({name,selector:{text:{}}})),
   ...['airflow_supply','airflow_extract','humidity_supply','humidity_extract','power','energy','preheater_power','exchanger_inlet','exchanger_outlet'].map(name=>({name,selector:{entity:{domain:'sensor'}}})),
   { name:'history_entities',selector:{entity:{domain:'sensor',multiple:true}} },
   { name:'history_hours',selector:{select:{options:[{value:'1',label:'1 hour'},{value:'24',label:'24 hours'},{value:'168',label:'7 days'}]}} },
@@ -163,6 +169,7 @@ ${this._profile && this._profileDevice ? html`
           .computeLabel=${this._label}
           @value-changed=${this._mainChanged}
         ></ha-form>
+        ${this._diagnostics()}
         ${this._detectedCount > 0
           ? html`<div class="hint">✓ ${this._detectedCount} ${localize('detected', resolveLanguage(this._config.language, this.hass.language))}</div>`
           : ''}
@@ -185,8 +192,22 @@ ${this._profile && this._profileDevice ? html`
     `;
   }
 
+  private _diagnostics(): TemplateResult {
+    const lang=resolveLanguage(this._config.language,this.hass.language);
+    const t=(key:string)=>localize(key,lang);
+    const issues=diagnoseConfig(this.hass as unknown as DetectHass,this._config);
+    const detected=this._profile&&this._profileDevice?detectProfile(this.hass as unknown as DetectHass,this._profile,this._profileDevice):undefined;
+    const repaired=detected?repairMappings(this.hass as unknown as DetectHass,this._config,detected.mapped):this._config;
+    const changes=Object.entries(repaired).filter(([field,value])=>value!==(this._config as unknown as Record<string,unknown>)[field]);
+    return html`<ha-expansion-panel outlined><span slot="header">${t('diagnostics')}</span>
+      ${issues.length?issues.map(issue=>html`<p>${this._label({name:issue.field})}: ${t(issue.kind==='missing'?'missing_entity':issue.kind==='unit'?'wrong_unit':'unavailable_entity')} — ${issue.entity} ${issue.expected??''}</p>`):html`<p>${t('diagnostics_ok')}</p>`}
+      ${detected?html`<p>${t('missing_entity')}: ${detected.missing.join(', ')||'—'}</p><p>${t('ambiguous_mapping')}: ${detected.ambiguous.join(', ')||'—'}</p>`:''}
+      ${changes.length?html`<p>${t('repair_preview')}</p>${changes.map(([field,value])=>html`<p>${this._label({name:field})}: ${value}</p>`)}<button type="button" data-apply-repairs @click=${()=>this._emit(repaired)}>${t('apply_repairs')}</button>`:''}
+    </ha-expansion-panel>`;
+  }
+
   private _label = (schemaItem: { name: string }): string =>
-    localize(schemaItem.name === 'preheat' ? 'preheat_field' : schemaItem.name.startsWith('airflow_') && schemaItem.name !== 'airflow_control' ? 'telemetry_'+schemaItem.name : schemaItem.name, resolveLanguage(this._config.language, this.hass?.language));
+    localize(schemaItem.name === 'preheat' ? 'preheat_field' : ['airflow_supply','airflow_extract'].includes(schemaItem.name) ? 'telemetry_'+schemaItem.name : schemaItem.name, resolveLanguage(this._config.language, this.hass?.language));
 
   private _mainChanged(ev: CustomEvent): void {
     ev.stopPropagation();

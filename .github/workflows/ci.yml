@@ -7,6 +7,17 @@ on:
     branches-ignore: [master]
 
 jobs:
+  automation-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install template test dependencies
+        run: python -m pip install "Jinja2>=3.1,<4" "PyYAML>=6,<7"
+      - name: Backend template and ownership tests
+        run: python -m unittest discover -s blueprints/tests
   build-test:
     runs-on: ubuntu-latest
     steps:

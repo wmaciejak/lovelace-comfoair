@@ -4,6 +4,7 @@ import { HomeAssistant, LovelaceCard, LovelaceCardEditor, fireEvent } from 'cust
 import './comfoair-card-editor';
 import './comfoair-controls';
 import './comfoair-history';
+import './comfoair-intelligence';
 import { nativeFan, normalizeStatus, temperatureC, exchangerRecovery, telemetryValue, numericState } from './ventilation';
 import { ComfoairCardConfig, DetectHass } from './types';
 import { CARD_TYPE, EDITOR_TYPE, CARD_VERSION, FAN_BUTTONS, ENTITY_FIELDS } from './const';
@@ -84,7 +85,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
   protected shouldUpdate(changed: PropertyValues): boolean {
     if (changed.has('_config') || changed.has('_coreBusy') || changed.has('_coreError') || changed.has('_clock')) return true;
     const old = changed.get('hass') as HomeAssistant | undefined;
-    if (!old || !this._config || old.language !== this.hass.language || old.locale !== this.hass.locale) return true;
+    if (!old || !this._config || old.language !== this.hass.language || old.locale !== this.hass.locale || (old as unknown as DetectHass).entities !== (this.hass as unknown as DetectHass).entities) return true;
     const cfg = this._config as unknown as Record<string, string | undefined>;
     const ids = [...ENTITY_FIELDS.map((f) => cfg[f]).filter((x): x is string => !!x), ...(this._config.history_entities ?? [])];
     return ids.some((id) => old.states[id] !== this.hass.states[id]);
@@ -260,6 +261,7 @@ export class MqttComfoairCard extends LitElement implements LovelaceCard {
             </div>`,
           )}
         </div>
+        <mqttcomfoair-intelligence .hass=${this.hass} .config=${cfg} .language=${language}></mqttcomfoair-intelligence>
         ${this._telemetry()}
         ${cfg.history_entities?.length ? html`<mqttcomfoair-history .hass=${this.hass} .entities=${cfg.history_entities} .hours=${cfg.history_hours ?? 24} .language=${language}></mqttcomfoair-history>` : ''}
         ${this._backendControls()}

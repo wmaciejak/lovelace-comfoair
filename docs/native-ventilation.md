@@ -74,7 +74,7 @@ manual_override: input_boolean.ventilation_manual_override
 
 Boost shortcuts call the configured script with `duration` equal to 15, 30 or 60 minutes. The optional timer supplies remaining time. The browser interval only redraws this display; it does not stop the fan. Presets call scripts, which own persistent changes. When a manual fan/select action is taken through the card and `manual_override` is configured, the card enables that helper before sending the command.
 
-The supplied automation examples require a percentage-capable native fan. For a select-only or legacy climate device, adapt their fan actions to the device's supported integration actions before installation. The card supports those device domains independently of the example backend's narrower scope.
+The updated backend supports native fan percentages, climate fan modes, and raw select options. Configure the target and explicit raw values before installation. See the [controller adapter and insights guide](ventilation-insights.md).
 
 ## Layout and accessibility
 

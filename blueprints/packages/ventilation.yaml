@@ -1,315 +1,551 @@
-# Copy to config/packages/ventilation.yaml and replace EVERY fan.ventilation.
-# Requires a fan entity supporting set_percentage; percentage values must be valid
-# for that fan. No automations are installed by the card itself.
+# Configure actual entities and values before enabling this optional package.
 input_boolean:
   ventilation_boost_active:
-    name: Ventilation boost active
-  ventilation_previous_on:
-    name: Ventilation previous on state
+    name: Ventilation Boost active
   ventilation_manual_override:
-    name: Ventilation manual override
+    name: Ventilation Manual override
   ventilation_demand_active:
-    name: Ventilation demand active
+    name: Ventilation Demand active
+  ventilation_override_until_boundary:
+    name: Ventilation Override until next schedule boundary
+  ventilation_schedule_owned:
+    name: Ventilation Preset owned by schedule
   ventilation_automation_enabled:
-    name: Ventilation automation enabled
+    name: Ventilation Automatic control enabled
     initial: false
-
-input_number:
-  ventilation_previous_percentage:
-    name: Ventilation previous percentage
-    min: 0
-    max: 100
-    step: 1
-    mode: box
-  ventilation_boost_percentage:
-    name: Ventilation boost percentage
-    min: 1
-    max: 100
-    step: 1
-    mode: box
-    initial: 100
-
 input_text:
-  ventilation_previous_preset:
-    name: Ventilation previous preset
+  ventilation_target:
+    name: Ventilation Target entity
     max: 255
-  ventilation_boost_expected_preset:
-    name: Ventilation boost expected preset
+  ventilation_boost_value:
+    name: Ventilation Boost raw value
     max: 255
-
+  ventilation_home_value:
+    name: Ventilation Home raw value
+    max: 255
+  ventilation_away_value:
+    name: Ventilation Away raw value
+    max: 255
+  ventilation_quiet_value:
+    name: Ventilation Quiet raw value
+    max: 255
+  ventilation_previous_snapshot:
+    name: Ventilation Previous snapshot
+    max: 255
+  ventilation_expected_snapshot:
+    name: Ventilation Owned snapshot
+    max: 255
+  ventilation_control_reason:
+    name: Ventilation Control reason
+    max: 255
 input_datetime:
   ventilation_boost_deadline:
-    name: Ventilation boost deadline
+    name: Ventilation Boost deadline
     has_date: true
     has_time: true
   ventilation_last_automatic_change:
-    name: Ventilation last automatic change
+    name: Ventilation Last automatic change
     has_date: true
     has_time: true
-
 input_select:
   ventilation_preset:
     name: Ventilation preset
-    options: [Auto, Home, Away, Quiet, Manual]
-
+    options:
+    - Auto
+    - Home
+    - Away
+    - Quiet
+    - Manual
 timer:
   ventilation_boost:
     name: Ventilation boost
-    duration: '00:15:00'
+    duration: 00:15:00
     restore: true
-
 script:
+  ventilation_capture:
+    alias: Ventilation capture state (internal)
+    mode: parallel
+    sequence:
+    - variables:
+        snapshot: "v1|{{ {'entity': target_entity, 'state': states(target_entity),\n'value': (state_attr(target_entity,\
+          \ 'percentage') if target_entity.startswith('fan.') else\n state_attr(target_entity, 'fan_mode') if target_entity.startswith('climate.')\
+          \ else states(target_entity)),\n'preset': (state_attr(target_entity, 'preset_mode') or '') if target_entity.startswith('fan.')\
+          \ else ''} | to_json }}"
+    - variables:
+        result: '{{ {''snapshot'': snapshot} }}'
+    - stop: Captured ventilation state
+      response_variable: result
+    fields:
+      target_entity:
+        required: true
+  ventilation_apply:
+    alias: Ventilation apply mapped value (internal)
+    mode: queued
+    sequence:
+    - variables:
+        target_entity: '{{ entity | default(states(''input_text.ventilation_target'')) }}'
+        requested_value: '{{ value }}'
+        domain: '{{ (entity | default(states(''input_text.ventilation_target''))).split(''.'')[0] }}'
+    - condition: template
+      value_template: "{{ states(target_entity) not in ['unknown','unavailable',''] and\n((domain == 'fan' and is_number(requested_value)\
+        \ and 0 <= requested_value | float <= 100 and\n  state_attr(target_entity, 'percentage') is number and state_attr(target_entity,\
+        \ 'supported_features') | int(0) | bitwise_and(1) != 0) or\n (domain == 'climate' and state_attr(target_entity,\
+        \ 'supported_features') | int(0) | bitwise_and(8) != 0 and requested_value | string in (state_attr(target_entity,\
+        \ 'fan_modes') or [])) or\n (domain in ['select','input_select'] and requested_value | string in (state_attr(target_entity,\
+        \ 'options')\nor []))) }}"
+    - choose:
+      - conditions: '{{ domain == ''fan'' }}'
+        sequence:
+        - action: fan.set_percentage
+          target:
+            entity_id: '{{ target_entity }}'
+          data:
+            percentage: '{{ requested_value | float }}'
+      - conditions: '{{ domain == ''climate'' }}'
+        sequence:
+        - action: climate.set_fan_mode
+          target:
+            entity_id: '{{ target_entity }}'
+          data:
+            fan_mode: '{{ requested_value | string }}'
+      default:
+      - action: '{{ domain }}.select_option'
+        target:
+          entity_id: '{{ target_entity }}'
+        data:
+          option: '{{ requested_value | string }}'
+    - wait_template: "{{ (domain == 'fan' and ((requested_value | float == 0 and is_state(target_entity, 'off'))\
+        \ or\n (is_state(target_entity, 'on') and state_attr(target_entity, 'percentage') | float(-1) == requested_value\n\
+        | float))) or\n (domain == 'climate' and state_attr(target_entity, 'fan_mode') == requested_value | string)\
+        \ or\n (domain in ['select','input_select'] and states(target_entity) == requested_value | string) }}"
+      timeout: 00:00:15
+      continue_on_timeout: false
+    fields:
+      value:
+        required: true
+      entity:
+        required: false
+  ventilation_restore:
+    alias: Ventilation restore snapshot (internal)
+    mode: single
+    sequence:
+    - condition: template
+      value_template: '{{ snapshot is string and snapshot.startswith(''v1|'') and (snapshot[3:] | from_json({}))
+        is mapping and (snapshot[3:] | from_json({})).get(''entity'', '''').split(''.'')[0] in [''fan'',''climate'',''select'',''input_select'']
+        }}'
+    - variables:
+        saved: '{{ snapshot[3:] | from_json }}'
+        target_entity: '{{ (snapshot[3:] | from_json).entity }}'
+    - condition: template
+      value_template: '{{ target_entity.split(''.'')[0] in [''fan'',''climate'',''select'',''input_select''] and
+        states(target_entity) not in [''unknown'',''unavailable'',''''] }}'
+    - choose:
+      - conditions: '{{ target_entity.startswith(''fan.'') }}'
+        sequence:
+        - choose:
+          - conditions: '{{ saved.state == ''off'' }}'
+            sequence:
+            - action: fan.turn_off
+              target:
+                entity_id: '{{ target_entity }}'
+          - conditions: '{{ saved.preset != '''' and saved.preset in (state_attr(target_entity, ''preset_modes'')
+              or []) }}'
+            sequence:
+            - action: fan.turn_on
+              target:
+                entity_id: '{{ target_entity }}'
+            - action: fan.set_preset_mode
+              target:
+                entity_id: '{{ target_entity }}'
+              data:
+                preset_mode: '{{ saved.preset }}'
+          default:
+          - action: fan.set_percentage
+            target:
+              entity_id: '{{ target_entity }}'
+            data:
+              percentage: '{{ saved.value }}'
+      - conditions: '{{ target_entity.startswith(''climate.'') }}'
+        sequence:
+        - condition: template
+          value_template: '{{ saved.value in (state_attr(target_entity, ''fan_modes'') or []) and state_attr(target_entity,
+            ''supported_features'') | int(0) | bitwise_and(8) != 0 }}'
+        - action: climate.set_fan_mode
+          target:
+            entity_id: '{{ target_entity }}'
+          data:
+            fan_mode: '{{ saved.value }}'
+      default:
+      - condition: template
+        value_template: '{{ saved.value in (state_attr(target_entity, ''options'') or []) }}'
+      - action: '{{ target_entity.split(''.'')[0] }}.select_option'
+        target:
+          entity_id: '{{ target_entity }}'
+        data:
+          option: '{{ saved.value }}'
+    fields:
+      snapshot:
+        required: true
   ventilation_boost:
     alias: Ventilation timed boost
-    description: Starts or extends boost; duration is in minutes. Keeps the original snapshot when extended.
     mode: single
+    sequence:
+    - variables:
+        requested_minutes: '{{ duration | default(15) | int(0) }}'
+        target_entity: '{{ states(''input_text.ventilation_target'') }}'
+        requested_value: '{{ states(''input_text.ventilation_boost_value'') }}'
+    - condition: template
+      value_template: '{{ requested_minutes in [15,30,60] and is_state(''input_boolean.ventilation_manual_override'',
+        ''off'') }}'
+    - condition: template
+      value_template: '{{ target_entity.split(''.'')[0] in [''fan'',''climate'',''select'',''input_select''] and
+        states(target_entity) not in [''unknown'',''unavailable'',''''] }}'
+    - condition: template
+      value_template: "{{ states(target_entity) not in ['unknown','unavailable',''] and\n((target_entity.split('.')[0]\
+        \ == 'fan' and is_number(requested_value) and 0 <= requested_value | float <= 100 and\n  state_attr(target_entity,\
+        \ 'percentage') is number and state_attr(target_entity, 'supported_features') | int(0) | bitwise_and(1)\
+        \ != 0) or\n (target_entity.split('.')[0] == 'climate' and state_attr(target_entity, 'supported_features')\
+        \ | int(0) | bitwise_and(8) != 0 and requested_value | string in (state_attr(target_entity, 'fan_modes')\
+        \ or [])) or\n (target_entity.split('.')[0] in ['select','input_select'] and requested_value | string in\
+        \ (state_attr(target_entity, 'options')\nor []))) }}"
+    - if:
+      - condition: state
+        entity_id: input_boolean.ventilation_boost_active
+        state: 'off'
+      then:
+      - action: script.ventilation_capture
+        data:
+          target_entity: '{{ target_entity }}'
+        response_variable: captured
+      - condition: template
+        value_template: '{{ captured.snapshot | length <= 255 }}'
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.ventilation_previous_snapshot
+        data:
+          value: '{{ captured.snapshot }}'
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.ventilation_expected_snapshot
+        data:
+          value: ''
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.ventilation_boost_deadline
+      data:
+        timestamp: '{{ as_timestamp(now()) + requested_minutes * 60 }}'
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.ventilation_boost_active
+    - action: timer.start
+      target:
+        entity_id: timer.ventilation_boost
+      data:
+        duration: '{{ requested_minutes * 60 }}'
+    - action: script.ventilation_apply
+      data:
+        entity: '{{ target_entity }}'
+        value: '{{ requested_value }}'
+    - action: script.ventilation_capture
+      data:
+        target_entity: '{{ target_entity }}'
+      response_variable: captured
+    - condition: template
+      value_template: '{{ captured.snapshot | length <= 255 }}'
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_expected_snapshot
+      data:
+        value: '{{ captured.snapshot }}'
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Timed boost
     fields:
       duration:
-        name: Duration in minutes
+        name: Duration (minutes)
         default: 15
         selector:
           select:
-            options: ['15', '30', '60']
+            options:
+            - '15'
+            - '30'
+            - '60'
+  ventilation_end_boost:
+    alias: Ventilation end boost (internal)
+    mode: single
     sequence:
-      - variables:
-          requested_minutes: "{{ duration | default(15) | int(0) }}"
-          requested_percentage: "{{ states('input_number.ventilation_boost_percentage') | int(0) }}"
-      - condition: template
-        value_template: >-
-          {{ requested_minutes in [15, 30, 60]
-             and 0 < requested_percentage <= 100
-             and states('fan.ventilation') in ['on', 'off']
-             and state_attr('fan.ventilation', 'percentage') is number
-             and not is_state('input_boolean.ventilation_manual_override', 'on') }}
-      - if:
-          - condition: state
-            entity_id: input_boolean.ventilation_boost_active
-            state: 'off'
-        then:
-          - action: input_number.set_value
-            target:
-              entity_id: input_number.ventilation_previous_percentage
-            data:
-              value: "{{ state_attr('fan.ventilation', 'percentage') | int(0) }}"
-          - action: input_text.set_value
-            target:
-              entity_id: input_text.ventilation_previous_preset
-            data:
-              value: "{{ state_attr('fan.ventilation', 'preset_mode') or '' }}"
-          - action: "{{ 'input_boolean.turn_on' if is_state('fan.ventilation', 'on') else 'input_boolean.turn_off' }}"
-            target:
-              entity_id: input_boolean.ventilation_previous_on
-      # Arm state/deadline before the fan call so a request failure is reconciled.
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.ventilation_boost_deadline
+    - action: script.turn_off
+      target:
+        entity_id: script.ventilation_boost
+    - variables:
+        target_entity: '{{ states(''input_text.ventilation_target'') }}'
+        current_snapshot: "v1|{{ {'entity': target_entity, 'state': states(target_entity),\n'value': (state_attr(target_entity,\
+          \ 'percentage') if target_entity.startswith('fan.') else\n state_attr(target_entity, 'fan_mode') if target_entity.startswith('climate.')\
+          \ else states(target_entity)),\n'preset': (state_attr(target_entity, 'preset_mode') or '') if target_entity.startswith('fan.')\
+          \ else ''} | to_json }}"
+        expected_snapshot: '{{ states(''input_text.ventilation_expected_snapshot'') }}'
+    - variables:
+        should_restore: '{{ restore | default(true) | bool and
+
+          is_state(''input_boolean.ventilation_manual_override'', ''off'') and
+
+          expected_snapshot not in ['''', ''unknown'', ''unavailable''] and current_snapshot == expected_snapshot
+          }}'
+    - condition: state
+      entity_id: input_boolean.ventilation_boost_active
+      state: 'on'
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ventilation_boost_active
+    - action: timer.cancel
+      target:
+        entity_id: timer.ventilation_boost
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: '{{ "Boost finished" if should_restore else "Boost relinquished" }}'
+    - condition: template
+      value_template: '{{ should_restore }}'
+    - action: script.ventilation_restore
+      data:
+        snapshot: '{{ states(''input_text.ventilation_previous_snapshot'') }}'
+    fields:
+      restore:
+        default: true
+  ventilation_cancel_boost:
+    alias: Ventilation cancel boost
+    mode: single
+    sequence:
+    - action: script.ventilation_end_boost
+      data:
+        restore: true
+  ventilation_preset_auto:
+    alias: Ventilation Auto preset
+    mode: single
+    sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+        - input_boolean.ventilation_override_until_boundary
+        - input_boolean.ventilation_schedule_owned
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ventilation_manual_override
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.ventilation_preset
+      data:
+        option: Auto
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Preset Auto
+  ventilation_preset_home:
+    alias: Ventilation Home preset
+    mode: single
+    sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+        - input_boolean.ventilation_override_until_boundary
+        - input_boolean.ventilation_schedule_owned
+    - action: script.ventilation_end_boost
+      data:
+        restore: false
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ventilation_manual_override
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.ventilation_preset
+      data:
+        option: Home
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Preset Home
+    - action: script.ventilation_apply
+      data:
+        entity: '{{ states(''input_text.ventilation_target'') }}'
+        value: '{{ states(''input_text.ventilation_home_value'') }}'
+  ventilation_preset_away:
+    alias: Ventilation Away preset
+    mode: single
+    sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+        - input_boolean.ventilation_override_until_boundary
+        - input_boolean.ventilation_schedule_owned
+    - action: script.ventilation_end_boost
+      data:
+        restore: false
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ventilation_manual_override
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.ventilation_preset
+      data:
+        option: Away
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Preset Away
+    - action: script.ventilation_apply
+      data:
+        entity: '{{ states(''input_text.ventilation_target'') }}'
+        value: '{{ states(''input_text.ventilation_away_value'') }}'
+  ventilation_preset_quiet:
+    alias: Ventilation Quiet preset
+    mode: single
+    sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+        - input_boolean.ventilation_override_until_boundary
+        - input_boolean.ventilation_schedule_owned
+    - action: script.ventilation_end_boost
+      data:
+        restore: false
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ventilation_manual_override
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.ventilation_preset
+      data:
+        option: Quiet
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Preset Quiet
+    - action: script.ventilation_apply
+      data:
+        entity: '{{ states(''input_text.ventilation_target'') }}'
+        value: '{{ states(''input_text.ventilation_quiet_value'') }}'
+  ventilation_preset_manual:
+    alias: Ventilation Manual preset
+    mode: single
+    sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+        - input_boolean.ventilation_override_until_boundary
+        - input_boolean.ventilation_schedule_owned
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.ventilation_manual_override
+    - action: script.ventilation_end_boost
+      data:
+        restore: false
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.ventilation_preset
+      data:
+        option: Manual
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.ventilation_control_reason
+      data:
+        value: Preset Manual
+automation:
+- id: ventilation_boost_reconcile
+  alias: Ventilation boost expiry, ownership and restart reconciliation
+  mode: single
+  triggers:
+  - trigger: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.ventilation_boost
+  - trigger: homeassistant
+    event: start
+  - trigger: time_pattern
+    seconds: /15
+  conditions:
+  - condition: state
+    entity_id: input_boolean.ventilation_boost_active
+    state: 'on'
+  - condition: state
+    entity_id: script.ventilation_boost
+    state: 'off'
+  actions:
+  - variables:
+      target_entity: '{{ states(''input_text.ventilation_target'') }}'
+      current_snapshot: "v1|{{ {'entity': target_entity, 'state': states(target_entity),\n'value': (state_attr(target_entity,\
+        \ 'percentage') if target_entity.startswith('fan.') else\n state_attr(target_entity, 'fan_mode') if target_entity.startswith('climate.')\
+        \ else states(target_entity)),\n'preset': (state_attr(target_entity, 'preset_mode') or '') if target_entity.startswith('fan.')\
+        \ else ''} | to_json }}"
+      expected_snapshot: '{{ states(''input_text.ventilation_expected_snapshot'') }}'
+      remaining: '{{ state_attr(''input_datetime.ventilation_boost_deadline'', ''timestamp'') | float(0) - as_timestamp(now())
+        }}'
+  - condition: template
+    value_template: '{{ target_entity.split(''.'')[0] in [''fan'',''climate'',''select'',''input_select''] and states(target_entity)
+      not in [''unknown'',''unavailable'',''''] }}'
+  - choose:
+    - conditions: '{{ expected_snapshot not in ['''', ''unknown'', ''unavailable''] and current_snapshot != expected_snapshot
+        }}'
+      sequence:
+      - action: script.ventilation_end_boost
         data:
-          timestamp: "{{ as_timestamp(now()) + requested_minutes * 60 }}"
+          restore: false
       - action: input_boolean.turn_on
         target:
-          entity_id: input_boolean.ventilation_boost_active
+          entity_id: input_boolean.ventilation_manual_override
+    - conditions: '{{ remaining <= 0 }}'
+      sequence:
+      - action: script.ventilation_end_boost
+        data:
+          restore: true
+    - conditions: '{{ not is_state(''timer.ventilation_boost'', ''active'') }}'
+      sequence:
       - action: timer.start
         target:
           entity_id: timer.ventilation_boost
         data:
-          duration: "{{ requested_minutes * 60 }}"
-      - action: fan.set_percentage
-        target:
-          entity_id: fan.ventilation
-        data:
-          percentage: "{{ requested_percentage }}"
-      - wait_template: >-
-          {{ is_state('fan.ventilation', 'on') and
-             state_attr('fan.ventilation', 'percentage') | int(-1) == requested_percentage }}
-        timeout: '00:00:10'
-        continue_on_timeout: false
-      - action: input_text.set_value
-        target:
-          entity_id: input_text.ventilation_boost_expected_preset
-        data:
-          value: "{{ state_attr('fan.ventilation', 'preset_mode') or '' }}"
+          duration: '{{ remaining | int }}'
+- id: ventilation_boost_manual_override
+  alias: Ventilation manual override cancels boost
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: input_boolean.ventilation_manual_override
+    to: 'on'
+  actions:
+  - action: script.ventilation_end_boost
+    data:
+      restore: false
+template:
+- sensor:
+  - name: Ventilation controller
+    unique_id: ventilation_controller_status
+    state: '{% set reason = states(''input_text.ventilation_control_reason'') %}
 
-  ventilation_end_boost:
-    alias: Ventilation end boost (internal)
-    mode: single
-    fields:
-      restore:
-        description: Restore only when still owning the fan setting.
-        default: true
-    sequence:
-      - action: script.turn_off
-        target:
-          entity_id: script.ventilation_boost
-      - condition: state
-        entity_id: input_boolean.ventilation_boost_active
-        state: 'on'
-      - variables:
-          should_restore: >-
-            {{ restore | default(true) | bool and
-               not is_state('input_boolean.ventilation_manual_override', 'on') and
-               is_state('fan.ventilation', 'on') and
-               state_attr('fan.ventilation', 'percentage') | int(-1) ==
-                 states('input_number.ventilation_boost_percentage') | int(-2) and
-               (state_attr('fan.ventilation', 'preset_mode') or '') ==
-                 states('input_text.ventilation_boost_expected_preset') }}
-      - action: input_boolean.turn_off
-        target:
-          entity_id: input_boolean.ventilation_boost_active
-      - action: timer.cancel
-        target:
-          entity_id: timer.ventilation_boost
-      - condition: template
-        value_template: "{{ should_restore }}"
-      - choose:
-          - conditions: "{{ is_state('input_boolean.ventilation_previous_on', 'off') }}"
-            sequence:
-              - action: fan.turn_off
-                target:
-                  entity_id: fan.ventilation
-          - conditions: >-
-              {{ states('input_text.ventilation_previous_preset') != '' and
-                 states('input_text.ventilation_previous_preset') in
-                   (state_attr('fan.ventilation', 'preset_modes') or []) }}
-            sequence:
-              - action: fan.set_preset_mode
-                target:
-                  entity_id: fan.ventilation
-                data:
-                  preset_mode: "{{ states('input_text.ventilation_previous_preset') }}"
-        default:
-          - action: fan.set_percentage
-            target:
-              entity_id: fan.ventilation
-            data:
-              percentage: "{{ states('input_number.ventilation_previous_percentage') | int(0) }}"
+      {% if is_state(''input_boolean.ventilation_manual_override'',''on'') %}manual
 
-  ventilation_cancel_boost:
-    alias: Ventilation cancel boost
-    sequence:
-      - action: script.ventilation_end_boost
-        data:
-          restore: true
+      {% elif is_state(''input_boolean.ventilation_boost_active'',''on'') %}boost
 
-  ventilation_preset_auto:
-    alias: Ventilation Auto preset
-    sequence:
-      - action: input_boolean.turn_off
-        target:
-          entity_id: input_boolean.ventilation_manual_override
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.ventilation_preset
-        data:
-          option: Auto
-  ventilation_preset_home:
-    alias: Ventilation Home preset
-    sequence:
-      - action: script.ventilation_preset_auto
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.ventilation_preset
-        data:
-          option: Home
-  ventilation_preset_away:
-    alias: Ventilation Away preset
-    sequence:
-      - action: script.ventilation_preset_auto
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.ventilation_preset
-        data:
-          option: Away
-  ventilation_preset_quiet:
-    alias: Ventilation Quiet preset
-    sequence:
-      - action: script.ventilation_preset_auto
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.ventilation_preset
-        data:
-          option: Quiet
-  ventilation_preset_manual:
-    alias: Ventilation Manual preset
-    sequence:
-      - action: input_boolean.turn_on
-        target:
-          entity_id: input_boolean.ventilation_manual_override
-      - action: script.ventilation_end_boost
-        data:
-          restore: false
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.ventilation_preset
-        data:
-          option: Manual
+      {% elif is_state(''input_boolean.ventilation_schedule_owned'',''on'') and is_state(''input_boolean.ventilation_schedule_enabled'',''on'') %}schedule
 
-automation:
-  - id: ventilation_boost_reconcile
-    alias: Ventilation boost expiry and restart reconciliation
-    mode: single
-    triggers:
-      - trigger: event
-        event_type: timer.finished
-        event_data:
-          entity_id: timer.ventilation_boost
-      - trigger: homeassistant
-        event: start
-      # Retries after an offline gateway recovers, even if expiry happened offline.
-      - trigger: time_pattern
-        minutes: '/1'
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ventilation_boost_active
-        state: 'on'
-      - condition: template
-        value_template: "{{ states('fan.ventilation') in ['on', 'off'] and is_number(state_attr('fan.ventilation', 'percentage')) }}"
-    actions:
-      - variables:
-          remaining: "{{ state_attr('input_datetime.ventilation_boost_deadline', 'timestamp') | float(0) - as_timestamp(now()) }}"
-      - choose:
-          - conditions: "{{ remaining <= 0 }}"
-            sequence:
-              - action: script.ventilation_end_boost
-                data:
-                  restore: true
-          - conditions: "{{ not is_state('timer.ventilation_boost', 'active') }}"
-            sequence:
-              - action: timer.start
-                target:
-                  entity_id: timer.ventilation_boost
-                data:
-                  duration: "{{ remaining | int }}"
+      {% elif reason in [''Sensor high demand'',''Demand hysteresis'',''Home baseline'',''Away helper'',''Quiet
+      helper''] %}demand
 
-  - id: ventilation_boost_manual_override
-    alias: Ventilation relinquish boost after manual change
-    mode: restart
-    triggers:
-      - trigger: state
-        entity_id: fan.ventilation
-      - trigger: state
-        entity_id: input_boolean.ventilation_manual_override
-        to: 'on'
-    actions:
-      # Let integration updates settle, then compare with the command we own.
-      - delay: '00:00:03'
-      - condition: state
-        entity_id: input_boolean.ventilation_boost_active
-        state: 'on'
-      - condition: state
-        entity_id: script.ventilation_boost
-        state: 'off'
-      - condition: template
-        value_template: >-
-          {{ is_state('input_boolean.ventilation_manual_override', 'on') or
-             (states('fan.ventilation') in ['on', 'off'] and
-              (is_state('fan.ventilation', 'off') or
-               state_attr('fan.ventilation', 'percentage') | int(-1) !=
-                 states('input_number.ventilation_boost_percentage') | int(-2) or
-               (state_attr('fan.ventilation', 'preset_mode') or '') !=
-                 states('input_text.ventilation_boost_expected_preset'))) }}
-      - action: script.ventilation_end_boost
-        data:
-          restore: false
-      - action: input_boolean.turn_on
-        target:
-          entity_id: input_boolean.ventilation_manual_override
+      {% elif reason.startswith(''Preset'') %}manual
+
+      {% else %}unknown{% endif %}'
+    attributes:
+      preset: '{{ states(''input_select.ventilation_preset'') }}'
+      manual_override: '{{ is_state(''input_boolean.ventilation_manual_override'', ''on'') }}'
+      boost_active: '{{ is_state(''input_boolean.ventilation_boost_active'', ''on'') }}'
+      next_transition: '{{ states(''input_datetime.ventilation_boost_deadline'') if is_state(''input_boolean.ventilation_boost_active'',
+        ''on'') else none }}'
+      source: Home Assistant backend
+      target: '{{ states(''input_text.ventilation_target'') }}'
+      detail: '{{ states(''input_text.ventilation_control_reason'') }}'

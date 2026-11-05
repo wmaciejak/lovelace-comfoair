@@ -1,0 +1,37 @@
+# Replace sensor.ventilation_connection and binary_sensor.ventilation_device_fault.
+# Connect a real filter-due binary sensor as binary_sensor.ventilation_filter_due.
+# Alerts use HA persistent notifications; no mobile recipient is configured by default.
+input_boolean:
+  ventilation_alerts_enabled:
+    name: Ventilation alerts enabled
+    initial: false
+template:
+  - binary_sensor:
+      - name: Ventilation attention required
+        unique_id: ventilation_attention_required
+        state: >-
+          {{ is_state('input_boolean.ventilation_alerts_enabled','on') and
+             (states('sensor.ventilation_connection') in ['unknown','unavailable'] or
+              is_state('binary_sensor.ventilation_device_fault','on') or
+              is_state('binary_sensor.ventilation_filter_due','on') or
+              is_state('binary_sensor.ventilation_sustained_airflow_deviation','on')) }}
+alert:
+  ventilation_attention:
+    name: Ventilation requires attention
+    message: >-
+      Check gateway connection, device faults, filter counter and airflow balance.
+    done_message: Ventilation alert condition cleared.
+    entity_id: binary_sensor.ventilation_attention_required
+    state: 'on'
+    repeat: [5, 30, 120]
+    skip_first: true
+    can_acknowledge: true
+    notifiers: [persistent_notification]
+script:
+  ventilation_acknowledge_alert:
+    alias: Ventilation acknowledge alert
+    sequence:
+      - action: alert.turn_off
+        target:
+          entity_id: alert.ventilation_attention
+# HA alert state: idle=clear, on=active, off=active but acknowledged.
